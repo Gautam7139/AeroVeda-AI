@@ -44,15 +44,24 @@ html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; }
     color: #86efac; font-size: 0.75rem; font-weight: 500;
     letter-spacing: 2px; text-transform: uppercase; margin: 0 0 0.3rem 0;
 }
-.metric-card .value { color: #f0fdf4; font-size: 2rem; font-weight: 600; font-family: 'Playfair Display', serif; line-height: 1; }
+.metric-card .value {
+    color: #f0fdf4; font-size: 2rem; font-weight: 600;
+    font-family: 'Playfair Display', serif; line-height: 1;
+}
 .metric-card .unit { color: #6ee7b7; font-size: 0.85rem; margin-left: 4px; }
 .score-container {
     text-align: center; padding: 1.5rem;
     background: rgba(255,255,255,0.04);
     border: 1px solid rgba(74,222,128,0.25); border-radius: 20px;
 }
-.score-number { font-family: 'Playfair Display', serif; font-size: 4rem; font-weight: 700; line-height: 1; }
-.score-label { font-size: 0.8rem; letter-spacing: 2px; text-transform: uppercase; margin-top: 0.3rem; }
+.score-number {
+    font-family: 'Playfair Display', serif;
+    font-size: 4rem; font-weight: 700; line-height: 1;
+}
+.score-label {
+    font-size: 0.8rem; letter-spacing: 2px;
+    text-transform: uppercase; margin-top: 0.3rem;
+}
 .alert-crisis {
     background: rgba(239,68,68,0.12); border-left: 4px solid #ef4444;
     border-radius: 8px; padding: 0.8rem 1rem; margin: 0.5rem 0; color: #fca5a5;
@@ -69,26 +78,39 @@ html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; }
     background: rgba(255,255,255,0.04); border: 1px solid rgba(74,222,128,0.15);
     border-radius: 14px; padding: 1rem 1.2rem; margin: 0.5rem 0;
 }
-.crop-name { font-family: 'Playfair Display', serif; font-size: 1.2rem; color: #d1fae5; }
+.crop-name {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.2rem; color: #d1fae5;
+}
 .crop-score {
     background: rgba(74,222,128,0.2); color: #4ade80; border-radius: 20px;
-    padding: 2px 10px; font-size: 0.78rem; font-weight: 500; display: inline-block; margin-top: 4px;
+    padding: 2px 10px; font-size: 0.78rem; font-weight: 500;
+    display: inline-block; margin-top: 4px;
 }
 .chat-bubble-user {
     background: rgba(74,222,128,0.15); border: 1px solid rgba(74,222,128,0.3);
-    border-radius: 14px 14px 4px 14px; padding: 0.7rem 1rem; margin: 0.5rem 0; color: #d1fae5; text-align: right;
+    border-radius: 14px 14px 4px 14px; padding: 0.7rem 1rem;
+    margin: 0.5rem 0; color: #d1fae5; text-align: right;
 }
 .chat-bubble-ai {
     background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 14px 14px 14px 4px; padding: 0.7rem 1rem; margin: 0.5rem 0; color: #e8f4e8;
+    border-radius: 14px 14px 14px 4px; padding: 0.7rem 1rem;
+    margin: 0.5rem 0; color: #e8f4e8;
 }
 .section-title {
     font-family: 'Playfair Display', serif; font-size: 1.6rem; color: #d1fae5;
-    margin: 1.5rem 0 0.8rem 0; border-bottom: 1px solid rgba(74,222,128,0.2); padding-bottom: 0.4rem;
+    margin: 1.5rem 0 0.8rem 0;
+    border-bottom: 1px solid rgba(74,222,128,0.2); padding-bottom: 0.4rem;
 }
-[data-testid="stSidebar"] { background: rgba(5,15,30,0.95) !important; border-right: 1px solid rgba(74,222,128,0.15); }
+[data-testid="stSidebar"] {
+    background: rgba(5,15,30,0.95) !important;
+    border-right: 1px solid rgba(74,222,128,0.15);
+}
 .stTabs [data-baseweb="tab"] { color: #6ee7b7; }
-.stTabs [aria-selected="true"] { color: #4ade80 !important; border-bottom-color: #4ade80 !important; }
+.stTabs [aria-selected="true"] {
+    color: #4ade80 !important;
+    border-bottom-color: #4ade80 !important;
+}
 button[kind="primary"] {
     background: linear-gradient(135deg, #16a34a, #4ade80) !important;
     border: none !important; border-radius: 10px !important;
@@ -103,26 +125,32 @@ def get_groq_client():
     return Groq(api_key=st.secrets["GROQ_API_KEY"])
 
 def ask_groq(prompt, system="You are a helpful agricultural expert.", max_tokens=1000):
-    client = get_groq_client()
-    response = client.chat.completions.create(
-        model="llama3-70b-8192",
-        max_tokens=max_tokens,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": prompt}
-        ]
-    )
-    return response.choices[0].message.content
+    try:
+        client = get_groq_client()
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            max_tokens=max_tokens,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"AI error: {str(e)}"
 
 def ask_groq_chat(messages, system, max_tokens=700):
-    client = get_groq_client()
-    full_messages = [{"role": "system", "content": system}] + messages
-    response = client.chat.completions.create(
-        model="llama3-70b-8192",
-        max_tokens=max_tokens,
-        messages=full_messages
-    )
-    return response.choices[0].message.content
+    try:
+        client = get_groq_client()
+        full_messages = [{"role": "system", "content": system}] + messages
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            max_tokens=max_tokens,
+            messages=full_messages
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"AI error: {str(e)}"
 
 # ─── Weather Fetcher ─────────────────────────────────────────────────────────
 @st.cache_data(ttl=1800)
@@ -158,14 +186,25 @@ def geocode_city(city):
     except:
         return None
 
+def detect_location():
+    try:
+        r = requests.get("https://ipapi.co/json/", timeout=5)
+        data = r.json()
+        city = data.get("city", "")
+        if city:
+            return city
+        return None
+    except:
+        return None
+
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 WMO_CODES = {
-    0:"Clear sky",1:"Mainly clear",2:"Partly cloudy",3:"Overcast",
-    45:"Foggy",48:"Icy fog",51:"Light drizzle",53:"Drizzle",55:"Heavy drizzle",
-    61:"Slight rain",63:"Moderate rain",65:"Heavy rain",
-    71:"Slight snow",73:"Moderate snow",75:"Heavy snow",
-    80:"Slight showers",81:"Moderate showers",82:"Violent showers",
-    95:"Thunderstorm",96:"Thunderstorm w/ hail",99:"Thunderstorm w/ heavy hail"
+    0:"Clear sky", 1:"Mainly clear", 2:"Partly cloudy", 3:"Overcast",
+    45:"Foggy", 48:"Icy fog", 51:"Light drizzle", 53:"Drizzle", 55:"Heavy drizzle",
+    61:"Slight rain", 63:"Moderate rain", 65:"Heavy rain",
+    71:"Slight snow", 73:"Moderate snow", 75:"Heavy snow",
+    80:"Slight showers", 81:"Moderate showers", 82:"Violent showers",
+    95:"Thunderstorm", 96:"Thunderstorm w/ hail", 99:"Thunderstorm w/ heavy hail"
 }
 
 def weather_description(code):
@@ -177,10 +216,10 @@ def compute_env_score(w):
     temp = cur["temperature_2m"]
     humidity = cur["relative_humidity_2m"]
     wind = cur["wind_speed_10m"]
-    uv = cur.get("uv_index", 0)
-    precip = cur.get("precipitation", 0)
-    if temp > 40 or temp < 0:    score -= 25
-    elif temp > 35 or temp < 5:  score -= 12
+    uv = cur.get("uv_index", 0) or 0
+    precip = cur.get("precipitation", 0) or 0
+    if temp > 40 or temp < 0:       score -= 25
+    elif temp > 35 or temp < 5:     score -= 12
     if humidity > 90 or humidity < 15:   score -= 15
     elif humidity > 80 or humidity < 25: score -= 7
     if wind > 60:    score -= 20
@@ -192,7 +231,7 @@ def compute_env_score(w):
     return max(0, min(100, score))
 
 def score_color(score):
-    if score >= 75:  return "#4ade80", "EXCELLENT"
+    if score >= 75:   return "#4ade80", "EXCELLENT"
     elif score >= 55: return "#a3e635", "GOOD"
     elif score >= 35: return "#facc15", "MODERATE"
     else:             return "#ef4444", "POOR"
@@ -200,29 +239,34 @@ def score_color(score):
 def predict_crises(w):
     alerts = []
     daily = w["daily"]
-    hot_days = sum(1 for t in daily["temperature_2m_max"] if t > 38)
+    hot_days = sum(1 for t in daily["temperature_2m_max"] if t and t > 38)
     if hot_days >= 3:
         alerts.append(("crisis", f"🌡️ Heat Wave Risk — {hot_days} days forecast above 38°C. Risk of crop stress and wildfires."))
     elif hot_days >= 1:
         alerts.append(("warning", f"🌡️ High Temperature Alert — {hot_days} days above 38°C expected."))
+
     total_precip = sum(p for p in daily["precipitation_sum"] if p is not None)
     if total_precip < 2:
         alerts.append(("crisis", "🏜️ Drought Risk — Near-zero rainfall forecast over 7 days. Irrigation critical."))
     elif total_precip < 8:
         alerts.append(("warning", "💧 Low Rainfall — Minimal precipitation expected. Monitor soil moisture."))
+
     heavy_rain_days = sum(1 for p in daily["precipitation_sum"] if p and p > 25)
     if heavy_rain_days >= 2:
         alerts.append(("crisis", f"🌊 Flood Risk — {heavy_rain_days} days with >25mm rainfall forecast."))
     elif heavy_rain_days == 1:
         alerts.append(("warning", "🌧️ Heavy Rain Alert — Waterlogging possible. Ensure drainage."))
+
     max_wind = max((v for v in daily["wind_speed_10m_max"] if v), default=0)
     if max_wind > 70:
         alerts.append(("crisis", f"💨 Storm Wind Alert — Gusts up to {max_wind:.0f} km/h. Secure crops."))
     elif max_wind > 45:
         alerts.append(("warning", f"💨 High Wind Advisory — Up to {max_wind:.0f} km/h winds forecast."))
+
     max_uv = max((v for v in daily["uv_index_max"] if v), default=0)
     if max_uv > 10:
         alerts.append(("warning", f"☀️ Extreme UV Index ({max_uv:.0f}) — Risk of leaf scorch on sensitive crops."))
+
     if not alerts:
         alerts.append(("safe", "✅ No significant environmental crises forecast for the next 7 days."))
     return alerts
@@ -232,7 +276,8 @@ def recommend_crops(w):
     daily = w["daily"]
     temp = cur["temperature_2m"]
     humidity = cur["relative_humidity_2m"]
-    avg_rain = sum(p for p in daily["precipitation_sum"] if p) / 7
+    precip_list = [p for p in daily["precipitation_sum"] if p is not None]
+    avg_rain = sum(precip_list) / len(precip_list) if precip_list else 0
     crops = []
     if 20 <= temp <= 38 and humidity > 50:
         crops.append(("🌾 Rice", 95, "Thrives in warm, humid conditions.", "High water; transplant seedlings; 3-4 month cycle."))
@@ -264,13 +309,24 @@ st.markdown("""
 # ─── Sidebar ─────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("### 📍 Location")
-    city = st.text_input("Enter city or region", value="Mumbai", placeholder="e.g. Delhi, Pune...")
+
+    if st.button("📍 Use My Location", type="primary"):
+        detected = detect_location()
+        if detected:
+            st.session_state.detected_city = detected
+            st.success(f"Detected: {detected}")
+        else:
+            st.warning("Could not detect location. Please type it manually.")
+
+    default_city = st.session_state.get("detected_city", "Mumbai")
+    city = st.text_input("Or type a city", value=default_city, placeholder="e.g. Delhi, Pune...")
+
     st.markdown("---")
     st.markdown("""
     <div style="color:#6ee7b7;font-size:0.78rem;line-height:1.8">
     <b>Data Sources</b><br>
     🌤 Open-Meteo (weather)<br>
-    🤖 Groq AI — LLaMA 3 70B<br>
+    🤖 Groq AI — LLaMA 3.3 70B<br>
     📡 Real-time 7-day forecast
     </div>
     """, unsafe_allow_html=True)
@@ -304,7 +360,9 @@ with tab1:
         st.markdown(f"""
         <div style="padding:1.2rem;background:rgba(255,255,255,0.04);
              border:1px solid rgba(74,222,128,0.2);border-radius:16px;margin-bottom:1rem">
-            <div style="font-size:0.75rem;letter-spacing:2px;color:#6ee7b7;text-transform:uppercase">Current Location</div>
+            <div style="font-size:0.75rem;letter-spacing:2px;color:#6ee7b7;text-transform:uppercase">
+                Current Location
+            </div>
             <div style="font-family:'Playfair Display',serif;font-size:2rem;color:#d1fae5;margin:4px 0">
                 {city.title()}{', ' + country if country else ''}
             </div>
@@ -319,7 +377,8 @@ with tab1:
     with score_col:
         st.markdown(f"""
         <div class="score-container">
-            <div style="font-size:0.72rem;letter-spacing:2px;color:#6ee7b7;text-transform:uppercase;margin-bottom:8px">
+            <div style="font-size:0.72rem;letter-spacing:2px;color:#6ee7b7;
+                 text-transform:uppercase;margin-bottom:8px">
                 Environmental Score
             </div>
             <div class="score-number" style="color:{s_color}">{env_score}</div>
@@ -328,14 +387,14 @@ with tab1:
         """, unsafe_allow_html=True)
 
     st.markdown('<div class="section-title">Current Conditions</div>', unsafe_allow_html=True)
-    c1,c2,c3,c4,c5,c6 = st.columns(6)
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
     metrics = [
-        (c1,"🌡️","Temperature",  f"{cur['temperature_2m']:.1f}",       "°C"),
-        (c2,"💧","Humidity",      f"{cur['relative_humidity_2m']}",      "%"),
-        (c3,"💨","Wind Speed",    f"{cur['wind_speed_10m']:.1f}",        "km/h"),
-        (c4,"🌧️","Precipitation", f"{cur['precipitation']:.1f}",         "mm"),
-        (c5,"☀️","UV Index",      f"{cur.get('uv_index',0):.0f}",        ""),
-        (c6,"🌡️","Feels Like",   f"{cur['apparent_temperature']:.1f}",  "°C"),
+        (c1, "🌡️", "Temperature",  f"{cur['temperature_2m']:.1f}",      "°C"),
+        (c2, "💧", "Humidity",      f"{cur['relative_humidity_2m']}",     "%"),
+        (c3, "💨", "Wind Speed",    f"{cur['wind_speed_10m']:.1f}",       "km/h"),
+        (c4, "🌧️", "Precipitation", f"{cur['precipitation']:.1f}",        "mm"),
+        (c5, "☀️", "UV Index",      f"{cur.get('uv_index', 0) or 0:.0f}", ""),
+        (c6, "🌡️", "Feels Like",   f"{cur['apparent_temperature']:.1f}", "°C"),
     ]
     for col, icon, label, val, unit in metrics:
         with col:
@@ -415,7 +474,10 @@ Weather data: {json.dumps(weather_summary, indent=2)}
 Be specific and actionable."""
 
         with st.spinner("Generating AI analysis..."):
-            result = ask_groq(prompt, system="You are an expert environmental analyst for agricultural regions. Be specific, practical and concise.")
+            result = ask_groq(
+                prompt,
+                system="You are an expert environmental analyst for agricultural regions. Be specific, practical and concise."
+            )
             st.markdown(f"""
             <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(74,222,128,0.2);
                  border-radius:14px;padding:1.2rem 1.4rem;color:#e8f4e8;line-height:1.7">
@@ -443,9 +505,14 @@ with tab3:
                 <div style="color:#6ee7b7;font-size:0.8rem;margin-top:4px">📋 {care}</div>
             </div>
             """, unsafe_allow_html=True)
+    else:
+        st.info("No crop recommendations available for current conditions.")
 
     st.markdown('<div class="section-title">AI Crop Management Plan</div>', unsafe_allow_html=True)
-    selected_crop = st.selectbox("Choose a crop for a detailed plan", [c[0] for c in crops] if crops else ["No crops available"])
+    selected_crop = st.selectbox(
+        "Choose a crop for a detailed plan",
+        [c[0] for c in crops] if crops else ["No crops available"]
+    )
 
     if st.button("📋 Generate Management Plan", type="primary") and crops:
         prompt = f"""Provide a detailed crop management plan for:
@@ -454,7 +521,7 @@ Location: {city}, {country}
 Temperature: {cur['temperature_2m']:.1f}°C
 Humidity: {cur['relative_humidity_2m']}%
 Rainfall: {cur['precipitation']:.1f}mm
-UV Index: {cur.get('uv_index',0):.0f}
+UV Index: {cur.get('uv_index', 0) or 0:.0f}
 Wind: {cur['wind_speed_10m']:.1f} km/h
 
 Include:
@@ -466,7 +533,10 @@ Include:
 6. Special weather precautions"""
 
         with st.spinner("Generating management plan..."):
-            result = ask_groq(prompt, system="You are an expert agronomist. Give specific, practical advice for small to medium farms.")
+            result = ask_groq(
+                prompt,
+                system="You are an expert agronomist. Give specific, practical advice for small to medium farms."
+            )
             st.markdown(f"""
             <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(74,222,128,0.2);
                  border-radius:14px;padding:1.2rem 1.4rem;color:#e8f4e8;line-height:1.7">
