@@ -187,15 +187,21 @@ def geocode_city(city):
         return None
 
 def detect_location():
-    try:
-        r = requests.get("https://ipapi.co/json/", timeout=5)
-        data = r.json()
-        city = data.get("city", "")
-        if city:
-            return city
-        return None
-    except:
-        return None
+    services = [
+        ("https://ipinfo.io/json", "city"),
+        ("https://ip-api.com/json", "city"),
+        ("https://ipapi.co/json/", "city"),
+    ]
+    for url, key in services:
+        try:
+            r = requests.get(url, timeout=5)
+            data = r.json()
+            city = data.get(key, "")
+            if city:
+                return city
+        except:
+            continue
+    return None
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 WMO_CODES = {
@@ -244,29 +250,24 @@ def predict_crises(w):
         alerts.append(("crisis", f"🌡️ Heat Wave Risk — {hot_days} days forecast above 38°C. Risk of crop stress and wildfires."))
     elif hot_days >= 1:
         alerts.append(("warning", f"🌡️ High Temperature Alert — {hot_days} days above 38°C expected."))
-
     total_precip = sum(p for p in daily["precipitation_sum"] if p is not None)
     if total_precip < 2:
         alerts.append(("crisis", "🏜️ Drought Risk — Near-zero rainfall forecast over 7 days. Irrigation critical."))
     elif total_precip < 8:
         alerts.append(("warning", "💧 Low Rainfall — Minimal precipitation expected. Monitor soil moisture."))
-
     heavy_rain_days = sum(1 for p in daily["precipitation_sum"] if p and p > 25)
     if heavy_rain_days >= 2:
         alerts.append(("crisis", f"🌊 Flood Risk — {heavy_rain_days} days with >25mm rainfall forecast."))
     elif heavy_rain_days == 1:
         alerts.append(("warning", "🌧️ Heavy Rain Alert — Waterlogging possible. Ensure drainage."))
-
     max_wind = max((v for v in daily["wind_speed_10m_max"] if v), default=0)
     if max_wind > 70:
         alerts.append(("crisis", f"💨 Storm Wind Alert — Gusts up to {max_wind:.0f} km/h. Secure crops."))
     elif max_wind > 45:
         alerts.append(("warning", f"💨 High Wind Advisory — Up to {max_wind:.0f} km/h winds forecast."))
-
     max_uv = max((v for v in daily["uv_index_max"] if v), default=0)
     if max_uv > 10:
         alerts.append(("warning", f"☀️ Extreme UV Index ({max_uv:.0f}) — Risk of leaf scorch on sensitive crops."))
-
     if not alerts:
         alerts.append(("safe", "✅ No significant environmental crises forecast for the next 7 days."))
     return alerts
@@ -311,7 +312,8 @@ with st.sidebar:
     st.markdown("### 📍 Location")
 
     if st.button("📍 Use My Location", type="primary"):
-        detected = detect_location()
+        with st.spinner("Detecting location..."):
+            detected = detect_location()
         if detected:
             st.session_state.detected_city = detected
             st.success(f"Detected: {detected}")
@@ -389,12 +391,12 @@ with tab1:
     st.markdown('<div class="section-title">Current Conditions</div>', unsafe_allow_html=True)
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     metrics = [
-        (c1, "🌡️", "Temperature",  f"{cur['temperature_2m']:.1f}",      "°C"),
-        (c2, "💧", "Humidity",      f"{cur['relative_humidity_2m']}",     "%"),
-        (c3, "💨", "Wind Speed",    f"{cur['wind_speed_10m']:.1f}",       "km/h"),
-        (c4, "🌧️", "Precipitation", f"{cur['precipitation']:.1f}",        "mm"),
-        (c5, "☀️", "UV Index",      f"{cur.get('uv_index', 0) or 0:.0f}", ""),
-        (c6, "🌡️", "Feels Like",   f"{cur['apparent_temperature']:.1f}", "°C"),
+        (c1, "🌡️", "Temperature",  f"{cur['temperature_2m']:.1f}",             "°C"),
+        (c2, "💧", "Humidity",      f"{cur['relative_humidity_2m']}",            "%"),
+        (c3, "💨", "Wind Speed",    f"{cur['wind_speed_10m']:.1f}",              "km/h"),
+        (c4, "🌧️", "Precipitation", f"{cur['precipitation']:.1f}",               "mm"),
+        (c5, "☀️", "UV Index",      f"{cur.get('uv_index', 0) or 0:.0f}",        ""),
+        (c6, "🌡️", "Feels Like",   f"{cur['apparent_temperature']:.1f}",        "°C"),
     ]
     for col, icon, label, val, unit in metrics:
         with col:
