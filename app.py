@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import requests
 import json
 from datetime import datetime
@@ -78,10 +79,7 @@ html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; }
     background: rgba(255,255,255,0.04); border: 1px solid rgba(74,222,128,0.15);
     border-radius: 14px; padding: 1rem 1.2rem; margin: 0.5rem 0;
 }
-.crop-name {
-    font-family: 'Playfair Display', serif;
-    font-size: 1.2rem; color: #d1fae5;
-}
+.crop-name { font-family: 'Playfair Display', serif; font-size: 1.2rem; color: #d1fae5; }
 .crop-score {
     background: rgba(74,222,128,0.2); color: #4ade80; border-radius: 20px;
     padding: 2px 10px; font-size: 0.78rem; font-weight: 500;
@@ -108,8 +106,7 @@ html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; }
 }
 .stTabs [data-baseweb="tab"] { color: #6ee7b7; }
 .stTabs [aria-selected="true"] {
-    color: #4ade80 !important;
-    border-bottom-color: #4ade80 !important;
+    color: #4ade80 !important; border-bottom-color: #4ade80 !important;
 }
 button[kind="primary"] {
     background: linear-gradient(135deg, #16a34a, #4ade80) !important;
@@ -186,22 +183,22 @@ def geocode_city(city):
     except:
         return None
 
-def detect_location():
-    services = [
-        ("https://ipinfo.io/json", "city"),
-        ("https://ip-api.com/json", "city"),
-        ("https://ipapi.co/json/", "city"),
-    ]
-    for url, key in services:
-        try:
-            r = requests.get(url, timeout=5)
-            data = r.json()
-            city = data.get(key, "")
-            if city:
-                return city
-        except:
-            continue
-    return None
+def reverse_geocode(lat, lon):
+    try:
+        r = requests.get(
+            f"https://nominatim.openstreetmap.org/reverse?lat={lat}&lon={lon}&format=json",
+            headers={"User-Agent": "Aeroveda/1.0"},
+            timeout=5
+        )
+        data = r.json()
+        city = (
+            data.get("address", {}).get("city") or
+            data.get("address", {}).get("town") or
+            data.get("address", {}).get("village", "")
+        )
+        return city if city else None
+    except:
+        return None
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 WMO_CODES = {
@@ -311,16 +308,52 @@ st.markdown("""
 with st.sidebar:
     st.markdown("### 📍 Location")
 
-    if st.button("📍 Use My Location", type="primary"):
-        with st.spinner("Detecting location..."):
-            detected = detect_location()
-        if detected:
-            st.session_state.detected_city = detected
-            st.success(f"Detected: {detected}")
-        else:
-            st.warning("Could not detect location. Please type it manually.")
+    # Step 1: GPS button — asks browser for coordinates
+    components.html("""
+        <button onclick="
+            navigator.geolocation.getCurrentPosition(function(pos) {
+                const val = pos.coords.latitude + ',' + pos.coords.longitude;
+                localStorage.setItem('aeroveda_gps', val);
+                document.getElementById('gps-status').innerText = '✅ Got location! Now click Load below.';
+            }, function(err) {
+                document.getElementById('gps-status').innerText = '❌ Permission denied. Type city manually.';
+            });
+        " style="
+            background: linear-gradient(135deg, #16a34a, #4ade80);
+            border: none; border-radius: 10px; color: #052e16;
+            font-weight: 600; padding: 0.5rem 1rem;
+            cursor: pointer; width: 100%; font-size: 0.9rem;
+        ">📍 Use My Location</button>
+        <div id="gps-status" style="color:#6ee7b7;font-size:0.78rem;margin-top:6px;"></div>
+    """, height=70)
 
-    default_city = st.session_state.get("detected_city", "Mumbai")
+    # Step 2: Read GPS coords from query param passed via URL
+    gps_coords = st.query_params.get("gps", "")
+    if gps_coords and "," in gps_coords:
+        try:
+            gps_lat, gps_lon = map(float, gps_coords.split(","))
+            city_detected = reverse_geocode(gps_lat, gps_lon)
+            if city_detected:
+                st.session_state.detected_city = city_detected
+        except:
+            pass
+
+    # Step 3: Manual load button
+    if st.button("🔄 Load My Location"):
+        st.markdown("""
+        <script>
+        const gps = localStorage.getItem('aeroveda_gps');
+        if (gps) {
+            const url = new URL(window.location.href);
+            url.searchParams.set('gps', gps);
+            window.location.href = url.toString();
+        } else {
+            alert('Click "Use My Location" first and allow location access!');
+        }
+        </script>
+        """, unsafe_allow_html=True)
+
+    default_city = st.session_state.get("detected_city", "Bengaluru")
     city = st.text_input("Or type a city", value=default_city, placeholder="e.g. Delhi, Pune...")
 
     st.markdown("---")
