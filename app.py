@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import requests
 import json
 from datetime import datetime
@@ -54,6 +53,7 @@ html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; }
     text-align: center; padding: 1.5rem;
     background: rgba(255,255,255,0.04);
     border: 1px solid rgba(74,222,128,0.25); border-radius: 20px;
+    margin-bottom: 1rem;
 }
 .score-number {
     font-family: 'Playfair Display', serif;
@@ -115,7 +115,7 @@ button[kind="primary"] {
 }
 .bar-bg {
     background: rgba(255,255,255,0.08); border-radius: 99px;
-    height: 10px; width: 100%; margin: 4px 0 10px 0;
+    height: 10px; width: 100%; margin: 4px 0 12px 0;
 }
 .bar-fill { height: 10px; border-radius: 99px; }
 </style>
@@ -168,7 +168,7 @@ def fetch_weather(lat, lon):
         f"&forecast_days=7&timezone=auto"
     )
     try:
-        r = requests.get(url, timeout=10)
+        r = requests.get(url, timeout=20)
         r.raise_for_status()
         return r.json()
     except Exception as e:
@@ -184,7 +184,7 @@ def fetch_air_quality(lat, lon):
         f"sulphur_dioxide,ozone,european_aqi,us_aqi"
     )
     try:
-        r = requests.get(url, timeout=10)
+        r = requests.get(url, timeout=20)
         r.raise_for_status()
         return r.json()
     except:
@@ -194,7 +194,7 @@ def fetch_air_quality(lat, lon):
 def geocode_city(city):
     url = f"https://geocoding-api.open-meteo.com/v1/search?name={city}&count=1&language=en&format=json"
     try:
-        r = requests.get(url, timeout=8)
+        r = requests.get(url, timeout=10)
         data = r.json()
         if data.get("results"):
             res = data["results"][0]
@@ -203,33 +203,8 @@ def geocode_city(city):
     except:
         return None
 
-def reverse_geocode(lat, lon):
-    try:
-        r = requests.get(
-            f"https://nominatim.openstreetmap.org/reverse?lat={lat}&lon={lon}&format=json",
-            headers={"User-Agent": "Aeroveda/1.0"},
-            timeout=5
-        )
-        data = r.json()
-        city = (
-            data.get("address", {}).get("city") or
-            data.get("address", {}).get("town") or
-            data.get("address", {}).get("village", "")
-        )
-        return city if city else None
-    except:
-        return None
-
 # ─── Scoring ──────────────────────────────────────────────────────────────────
-def get_aqi_label(score):
-    if score >= 80: return "#4ade80", "CLEAN"
-    elif score >= 60: return "#a3e635", "GOOD"
-    elif score >= 40: return "#facc15", "MODERATE"
-    elif score >= 20: return "#fb923c", "POOR"
-    else: return "#ef4444", "HAZARDOUS"
-
 def compute_pollution_score(aq):
-    """0=most polluted, 100=cleanest"""
     if not aq:
         return None
     cur = aq.get("current", {})
@@ -241,36 +216,40 @@ def compute_pollution_score(aq):
 def compute_weather_score(w):
     cur = w["current"]
     score = 100
-    temp = cur["temperature_2m"]
+    temp     = cur["temperature_2m"]
     humidity = cur["relative_humidity_2m"]
-    wind = cur["wind_speed_10m"]
-    uv = cur.get("uv_index", 0) or 0
-    precip = cur.get("precipitation", 0) or 0
-    if temp > 40 or temp < 0:       score -= 25
-    elif temp > 35 or temp < 5:     score -= 12
-    if humidity > 90 or humidity < 15:   score -= 15
-    elif humidity > 80 or humidity < 25: score -= 7
-    if wind > 60:    score -= 20
-    elif wind > 35:  score -= 8
-    if uv > 10:      score -= 15
-    elif uv > 7:     score -= 6
-    if precip > 20:  score -= 15
-    elif precip > 5: score -= 4
+    wind     = cur["wind_speed_10m"]
+    uv       = cur.get("uv_index", 0) or 0
+    precip   = cur.get("precipitation", 0) or 0
+    if temp > 40 or temp < 0:        score -= 25
+    elif temp > 35 or temp < 5:      score -= 12
+    if humidity > 90 or humidity < 15:    score -= 15
+    elif humidity > 80 or humidity < 25:  score -= 7
+    if wind > 60:     score -= 20
+    elif wind > 35:   score -= 8
+    if uv > 10:       score -= 15
+    elif uv > 7:      score -= 6
+    if precip > 20:   score -= 15
+    elif precip > 5:  score -= 4
     return max(0, min(100, score))
 
-def compute_env_score(weather_score, pollution_score):
-    """Blend: 55% weather + 45% air quality"""
-    if pollution_score is None:
-        return weather_score
-    return max(0, min(100, round(weather_score * 0.55 + pollution_score * 0.45)))
+def compute_env_score(ws, ps):
+    if ps is None:
+        return ws
+    return max(0, min(100, round(ws * 0.55 + ps * 0.45)))
 
-def score_color(score):
-    if score >= 75:   return "#4ade80", "EXCELLENT"
-    elif score >= 55: return "#a3e635", "GOOD"
-    elif score >= 35: return "#facc15", "MODERATE"
-    else:             return "#ef4444", "POOR"
+def score_color(s):
+    if s >= 75:   return "#4ade80", "EXCELLENT"
+    elif s >= 55: return "#a3e635", "GOOD"
+    elif s >= 35: return "#facc15", "MODERATE"
+    else:         return "#ef4444", "POOR"
 
-# ─── Other Helpers ────────────────────────────────────────────────────────────
+def bar_color(val, good, bad):
+    if val <= good: return "#4ade80"
+    elif val <= bad: return "#facc15"
+    else:            return "#ef4444"
+
+# ─── Helpers ─────────────────────────────────────────────────────────────────
 WMO_CODES = {
     0:"Clear sky", 1:"Mainly clear", 2:"Partly cloudy", 3:"Overcast",
     45:"Foggy", 48:"Icy fog", 51:"Light drizzle", 53:"Drizzle", 55:"Heavy drizzle",
@@ -285,14 +264,12 @@ def weather_description(code):
 def predict_crises(w, aq_cur):
     alerts = []
     daily = w["daily"]
-    # Pollution
     if aq_cur:
         aqi = aq_cur.get("european_aqi") or aq_cur.get("us_aqi")
         if aqi and aqi > 80:
-            alerts.append(("crisis", f"💨 Air Quality Crisis — AQI {aqi}. Hazardous pollution. Severe risk to crops and health."))
+            alerts.append(("crisis", f"💨 Air Quality Crisis — AQI {aqi}. Hazardous. Severe risk to crops and health."))
         elif aqi and aqi > 50:
-            alerts.append(("warning", f"💨 Poor Air Quality — AQI {aqi}. May affect sensitive crops and outdoor workers."))
-    # Weather
+            alerts.append(("warning", f"💨 Poor Air Quality — AQI {aqi}. May affect sensitive crops."))
     hot_days = sum(1 for t in daily["temperature_2m_max"] if t and t > 38)
     if hot_days >= 3:
         alerts.append(("crisis", f"🌡️ Heat Wave Risk — {hot_days} days above 38°C forecast."))
@@ -355,71 +332,16 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ════════════════════════════════════════════════════════
-# SIDEBAR — GPS Location
+# SIDEBAR
 # ════════════════════════════════════════════════════════
 with st.sidebar:
     st.markdown("### 📍 Location")
-
-    # Read GPS from query params (set by JS below)
-    params = st.query_params
-    gps_raw = params.get("gps", "")
-    if gps_raw and "," in str(gps_raw):
-        try:
-            parts = str(gps_raw).split(",")
-            gps_lat = float(parts[0])
-            gps_lon = float(parts[1])
-            detected = reverse_geocode(gps_lat, gps_lon)
-            if detected:
-                st.session_state["detected_city"] = detected
-        except:
-            pass
-
-    # JS button that gets GPS then reloads page with ?gps=lat,lon
-    components.html("""
-    <button id="locbtn" onclick="getLocation()" style="
-        background: linear-gradient(135deg,#16a34a,#4ade80);
-        border:none; border-radius:10px; color:#052e16;
-        font-weight:600; padding:0.5rem 1rem;
-        cursor:pointer; width:100%; font-size:0.9rem; margin-bottom:6px;
-    ">📍 Use My Location</button>
-    <div id="status" style="color:#6ee7b7;font-size:0.75rem;min-height:18px;"></div>
-    <script>
-    function getLocation() {
-        var btn = document.getElementById('locbtn');
-        var status = document.getElementById('status');
-        btn.innerText = '⏳ Getting location...';
-        btn.disabled = true;
-        if (!navigator.geolocation) {
-            status.innerText = '❌ Geolocation not supported.';
-            btn.innerText = '📍 Use My Location';
-            btn.disabled = false;
-            return;
-        }
-        navigator.geolocation.getCurrentPosition(
-            function(pos) {
-                var lat = pos.coords.latitude.toFixed(5);
-                var lon = pos.coords.longitude.toFixed(5);
-                status.innerText = '✅ Found! Loading...';
-                var url = window.parent.location.href.split('?')[0] + '?gps=' + lat + ',' + lon;
-                window.parent.location.href = url;
-            },
-            function(err) {
-                status.style.color = '#fca5a5';
-                if (err.code === 1) status.innerText = '❌ Permission denied. Allow location in browser.';
-                else if (err.code === 2) status.innerText = '❌ Location unavailable.';
-                else status.innerText = '❌ Timed out. Try again.';
-                btn.innerText = '📍 Use My Location';
-                btn.disabled = false;
-            },
-            { timeout: 10000, enableHighAccuracy: true }
-        );
-    }
-    </script>
-    """, height=80)
-
-    default_city = st.session_state.get("detected_city", "Bengaluru")
-    city = st.text_input("Or type a city", value=default_city, placeholder="e.g. Delhi, Pune...")
-
+    city = st.text_input(
+        "Enter your city",
+        value=st.session_state.get("city", "Bengaluru"),
+        placeholder="e.g. Delhi, Mumbai, Pune..."
+    )
+    st.session_state["city"] = city
     st.markdown("---")
     st.markdown("""
     <div style="color:#6ee7b7;font-size:0.78rem;line-height:1.8">
@@ -436,7 +358,7 @@ with st.sidebar:
 # ════════════════════════════════════════════════════════
 geo = geocode_city(city)
 if not geo:
-    st.error(f"Could not find location: **{city}**. Try a different city name.")
+    st.error(f"Could not find **{city}**. Try a different city name.")
     st.stop()
 
 lat, lon, country = geo
@@ -444,12 +366,10 @@ weather = fetch_weather(lat, lon)
 if not weather:
     st.stop()
 
-air_quality = fetch_air_quality(lat, lon)
-cur = weather["current"]
-daily = weather["daily"]
-aq_cur = air_quality.get("current", {}) if air_quality else {}
-
-# Compute all scores
+air_quality     = fetch_air_quality(lat, lon)
+cur             = weather["current"]
+daily           = weather["daily"]
+aq_cur          = air_quality.get("current", {}) if air_quality else {}
 weather_score   = compute_weather_score(weather)
 pollution_score = compute_pollution_score(air_quality)
 env_score       = compute_env_score(weather_score, pollution_score)
@@ -469,7 +389,9 @@ with tab1:
     st.markdown(f"""
     <div style="padding:1.2rem;background:rgba(255,255,255,0.04);
          border:1px solid rgba(74,222,128,0.2);border-radius:16px;margin-bottom:1.2rem">
-        <div style="font-size:0.75rem;letter-spacing:2px;color:#6ee7b7;text-transform:uppercase">Current Location</div>
+        <div style="font-size:0.75rem;letter-spacing:2px;color:#6ee7b7;text-transform:uppercase">
+            Current Location
+        </div>
         <div style="font-family:'Playfair Display',serif;font-size:2rem;color:#d1fae5;margin:4px 0">
             {city.title()}{', ' + country if country else ''}
         </div>
@@ -484,27 +406,32 @@ with tab1:
     # ── THREE SCORE CARDS ──────────────────────────────────
     sc1, sc2, sc3 = st.columns(3)
 
+    p_val  = pollution_score if pollution_score is not None else 0
+    p_pct  = p_val
+    p_color, p_label = score_color(p_val)
+
     with sc1:
-        p_color, p_label = get_aqi_label(pollution_score or 0)
-        p_val = pollution_score if pollution_score is not None else "N/A"
-        p_pct = pollution_score if pollution_score is not None else 0
         st.markdown(f"""
         <div class="score-container">
             <div style="font-size:0.7rem;letter-spacing:2px;color:#6ee7b7;
                  text-transform:uppercase;margin-bottom:6px">🌫️ Pollution Score</div>
-            <div class="score-number" style="color:{p_color}">{p_val}</div>
+            <div class="score-number" style="color:{p_color}">
+                {pollution_score if pollution_score is not None else 'N/A'}
+            </div>
             <div class="score-label" style="color:{p_color}">{p_label}</div>
             <div style="background:rgba(255,255,255,0.08);border-radius:99px;
                  height:8px;width:100%;margin:10px 0 4px 0">
                 <div style="width:{p_pct}%;height:8px;border-radius:99px;
-                     background:{p_color};transition:width 0.4s"></div>
+                     background:{p_color}"></div>
             </div>
-            <div style="font-size:0.68rem;color:#6ee7b7">Higher = Cleaner Air</div>
+            <div style="font-size:0.68rem;color:#6ee7b7;margin-top:4px">
+                Higher = Cleaner Air
+            </div>
         </div>
         """, unsafe_allow_html=True)
 
+    w_color, w_label = score_color(weather_score)
     with sc2:
-        w_color, w_label = score_color(weather_score)
         st.markdown(f"""
         <div class="score-container">
             <div style="font-size:0.7rem;letter-spacing:2px;color:#6ee7b7;
@@ -514,9 +441,11 @@ with tab1:
             <div style="background:rgba(255,255,255,0.08);border-radius:99px;
                  height:8px;width:100%;margin:10px 0 4px 0">
                 <div style="width:{weather_score}%;height:8px;border-radius:99px;
-                     background:{w_color};transition:width 0.4s"></div>
+                     background:{w_color}"></div>
             </div>
-            <div style="font-size:0.68rem;color:#6ee7b7">Based on temp, wind, UV, rain</div>
+            <div style="font-size:0.68rem;color:#6ee7b7;margin-top:4px">
+                Temp · Wind · UV · Rain
+            </div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -530,85 +459,91 @@ with tab1:
             <div style="background:rgba(255,255,255,0.08);border-radius:99px;
                  height:8px;width:100%;margin:10px 0 4px 0">
                 <div style="width:{env_score}%;height:8px;border-radius:99px;
-                     background:{s_color};transition:width 0.4s"></div>
+                     background:{s_color}"></div>
             </div>
-            <div style="font-size:0.68rem;color:#6ee7b7">55% Weather + 45% Air Quality</div>
+            <div style="font-size:0.68rem;color:#6ee7b7;margin-top:4px">
+                55% Weather + 45% Air Quality
+            </div>
         </div>
         """, unsafe_allow_html=True)
 
-    # ── AIR QUALITY DETAILS ────────────────────────────────
+    # ── AIR QUALITY BREAKDOWN ──────────────────────────────
     st.markdown('<div class="section-title">💨 Air Quality Breakdown</div>', unsafe_allow_html=True)
 
     if aq_cur:
-        pm25 = aq_cur.get("pm2_5", 0) or 0
-        pm10 = aq_cur.get("pm10", 0) or 0
-        no2  = aq_cur.get("nitrogen_dioxide", 0) or 0
-        so2  = aq_cur.get("sulphur_dioxide", 0) or 0
-        o3   = aq_cur.get("ozone", 0) or 0
-        co   = aq_cur.get("carbon_monoxide", 0) or 0
-        eu_aqi = aq_cur.get("european_aqi", 0) or 0
-        us_aqi = aq_cur.get("us_aqi", 0) or 0
+        pm25   = float(aq_cur.get("pm2_5", 0) or 0)
+        pm10   = float(aq_cur.get("pm10", 0) or 0)
+        no2    = float(aq_cur.get("nitrogen_dioxide", 0) or 0)
+        so2    = float(aq_cur.get("sulphur_dioxide", 0) or 0)
+        o3     = float(aq_cur.get("ozone", 0) or 0)
+        co     = float(aq_cur.get("carbon_monoxide", 0) or 0)
+        eu_aqi = int(aq_cur.get("european_aqi", 0) or 0)
+        us_aqi = int(aq_cur.get("us_aqi", 0) or 0)
 
-        def bar_color(val, good, bad):
-            if val <= good: return "#4ade80"
-            elif val <= bad: return "#facc15"
-            else: return "#ef4444"
+        pm25c  = bar_color(pm25, 12, 35)
+        pm10c  = bar_color(pm10, 20, 50)
+        no2c   = bar_color(no2, 40, 100)
+        so2c   = bar_color(so2, 20, 80)
+        o3c    = bar_color(o3, 60, 120)
+
+        pm25_pct = min(100, int(pm25 / 2.5))
+        pm10_pct = min(100, int(pm10 / 1.5))
+        no2_pct  = min(100, int(no2))
+        so2_pct  = min(100, int(so2))
+        o3_pct   = min(100, int(o3 / 1.8))
 
         aq1, aq2 = st.columns(2)
+
         with aq1:
-            pm25c = bar_color(pm25, 12, 35)
-            pm10c = bar_color(pm10, 20, 50)
-            no2c  = bar_color(no2, 40, 100)
             st.markdown(f"""
-            <div class="metric-card">
-                <h4>🔴 PM2.5 — Fine Particles</h4>
-                <span class="value" style="color:{pm25c};font-size:1.8rem">{pm25:.1f}</span>
-                <span class="unit">μg/m³</span>
-                <div class="bar-bg"><div class="bar-fill" style="width:{min(100,int(pm25/2.5))}%;background:{pm25c}"></div></div>
+<div class="metric-card">
+    <h4>🔴 PM2.5 — Fine Particles</h4>
+    <span class="value" style="color:{pm25c};font-size:1.8rem">{pm25:.1f}</span>
+    <span class="unit">μg/m³</span>
+    <div class="bar-bg"><div class="bar-fill" style="width:{pm25_pct}%;background:{pm25c}"></div></div>
 
-                <h4>🟠 PM10 — Coarse Particles</h4>
-                <span class="value" style="color:{pm10c};font-size:1.8rem">{pm10:.1f}</span>
-                <span class="unit">μg/m³</span>
-                <div class="bar-bg"><div class="bar-fill" style="width:{min(100,int(pm10/1.5))}%;background:{pm10c}"></div></div>
+    <h4>🟠 PM10 — Coarse Particles</h4>
+    <span class="value" style="color:{pm10c};font-size:1.8rem">{pm10:.1f}</span>
+    <span class="unit">μg/m³</span>
+    <div class="bar-bg"><div class="bar-fill" style="width:{pm10_pct}%;background:{pm10c}"></div></div>
 
-                <h4>🟡 Nitrogen Dioxide (NO₂)</h4>
-                <span class="value" style="color:{no2c};font-size:1.8rem">{no2:.1f}</span>
-                <span class="unit">μg/m³</span>
-                <div class="bar-bg"><div class="bar-fill" style="width:{min(100,int(no2))}%;background:{no2c}"></div></div>
-            </div>
-            """, unsafe_allow_html=True)
+    <h4>🟡 Nitrogen Dioxide NO₂</h4>
+    <span class="value" style="color:{no2c};font-size:1.8rem">{no2:.1f}</span>
+    <span class="unit">μg/m³</span>
+    <div class="bar-bg"><div class="bar-fill" style="width:{no2_pct}%;background:{no2c}"></div></div>
+</div>
+""", unsafe_allow_html=True)
 
         with aq2:
-            so2c = bar_color(so2, 20, 80)
-            o3c  = bar_color(o3, 60, 120)
             st.markdown(f"""
-            <div class="metric-card">
-                <h4>🟤 Sulphur Dioxide (SO₂)</h4>
-                <span class="value" style="color:{so2c};font-size:1.8rem">{so2:.1f}</span>
-                <span class="unit">μg/m³</span>
-                <div class="bar-bg"><div class="bar-fill" style="width:{min(100,int(so2))}%;background:{so2c}"></div></div>
+<div class="metric-card">
+    <h4>🟤 Sulphur Dioxide SO₂</h4>
+    <span class="value" style="color:{so2c};font-size:1.8rem">{so2:.1f}</span>
+    <span class="unit">μg/m³</span>
+    <div class="bar-bg"><div class="bar-fill" style="width:{so2_pct}%;background:{so2c}"></div></div>
 
-                <h4>🔵 Ozone (O₃)</h4>
-                <span class="value" style="color:{o3c};font-size:1.8rem">{o3:.1f}</span>
-                <span class="unit">μg/m³</span>
-                <div class="bar-bg"><div class="bar-fill" style="width:{min(100,int(o3/1.8))}%;background:{o3c}"></div></div>
+    <h4>🔵 Ozone O₃</h4>
+    <span class="value" style="color:{o3c};font-size:1.8rem">{o3:.1f}</span>
+    <span class="unit">μg/m³</span>
+    <div class="bar-bg"><div class="bar-fill" style="width:{o3_pct}%;background:{o3c}"></div></div>
 
-                <h4>⚫ Carbon Monoxide (CO)</h4>
-                <span class="value" style="font-size:1.8rem">{co/1000:.2f}</span>
-                <span class="unit">mg/m³</span>
+    <h4>⚫ Carbon Monoxide CO</h4>
+    <span class="value" style="font-size:1.8rem">{co/1000:.2f}</span>
+    <span class="unit">mg/m³</span>
 
-                <div style="display:flex;gap:1rem;margin-top:0.8rem">
-                    <div>
-                        <div style="font-size:0.7rem;color:#6ee7b7;letter-spacing:1px">EU AQI</div>
-                        <div style="font-size:1.4rem;font-weight:700;color:#d1fae5">{eu_aqi}</div>
-                    </div>
-                    <div>
-                        <div style="font-size:0.7rem;color:#6ee7b7;letter-spacing:1px">US AQI</div>
-                        <div style="font-size:1.4rem;font-weight:700;color:#d1fae5">{us_aqi}</div>
-                    </div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
+    <div style="display:flex;gap:2rem;margin-top:1rem">
+        <div>
+            <div style="font-size:0.7rem;color:#6ee7b7;letter-spacing:1px;text-transform:uppercase">EU AQI</div>
+            <div style="font-size:1.8rem;font-weight:700;color:#d1fae5;font-family:'Playfair Display',serif">{eu_aqi}</div>
+        </div>
+        <div>
+            <div style="font-size:0.7rem;color:#6ee7b7;letter-spacing:1px;text-transform:uppercase">US AQI</div>
+            <div style="font-size:1.8rem;font-weight:700;color:#d1fae5;font-family:'Playfair Display',serif">{us_aqi}</div>
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
     else:
         st.info("Air quality data not available for this location.")
 
@@ -625,17 +560,27 @@ with tab1:
     ]:
         with col:
             st.markdown(f"""
-            <div class="metric-card">
-                <h4>{icon} {label}</h4>
-                <span class="value">{val}</span><span class="unit">{unit}</span>
-            </div>
-            """, unsafe_allow_html=True)
+<div class="metric-card">
+    <h4>{icon} {label}</h4>
+    <span class="value">{val}</span><span class="unit">{unit}</span>
+</div>
+""", unsafe_allow_html=True)
 
-    c7,c8 = st.columns(2)
+    c7, c8 = st.columns(2)
     with c7:
-        st.markdown(f'<div class="metric-card"><h4>🌫️ Cloud Cover</h4><span class="value">{cur["cloud_cover"]}</span><span class="unit">%</span></div>', unsafe_allow_html=True)
+        st.markdown(f"""
+<div class="metric-card">
+    <h4>🌫️ Cloud Cover</h4>
+    <span class="value">{cur['cloud_cover']}</span><span class="unit">%</span>
+</div>
+""", unsafe_allow_html=True)
     with c8:
-        st.markdown(f'<div class="metric-card"><h4>📊 Surface Pressure</h4><span class="value">{cur["surface_pressure"]:.0f}</span><span class="unit">hPa</span></div>', unsafe_allow_html=True)
+        st.markdown(f"""
+<div class="metric-card">
+    <h4>📊 Surface Pressure</h4>
+    <span class="value">{cur['surface_pressure']:.0f}</span><span class="unit">hPa</span>
+</div>
+""", unsafe_allow_html=True)
 
     # ── 7-DAY FORECAST ─────────────────────────────────────
     st.markdown('<div class="section-title">7-Day Forecast</div>', unsafe_allow_html=True)
@@ -672,50 +617,58 @@ with tab2:
     if st.button("🤖 Generate AI Crisis Report", type="primary"):
         summary = {
             "location": f"{city}, {country}",
-            "temp": cur["temperature_2m"],
-            "humidity": cur["relative_humidity_2m"],
-            "wind": cur["wind_speed_10m"],
-            "aqi_eu": aq_cur.get("european_aqi"),
+            "temp_c": cur["temperature_2m"],
+            "humidity_pct": cur["relative_humidity_2m"],
+            "wind_kmh": cur["wind_speed_10m"],
+            "eu_aqi": aq_cur.get("european_aqi"),
             "pm2_5": aq_cur.get("pm2_5"),
             "pm10": aq_cur.get("pm10"),
             "pollution_score": pollution_score,
             "weather_score": weather_score,
-            "overall_env_score": env_score,
+            "env_score": env_score,
             "7d_max_temps": daily["temperature_2m_max"],
             "7d_rain_mm": daily["precipitation_sum"],
         }
         with st.spinner("Generating AI analysis..."):
             result = ask_groq(
-                f"Analyse weather+pollution data for {city}: {json.dumps(summary,indent=2)}\n\nProvide: 1) Risk assessment 2) Agriculture impact 3) Farmer action steps 4) 30-day outlook. Be specific.",
-                system="You are an expert environmental and agricultural analyst. Be concise and actionable."
+                f"Analyse this weather and pollution data for {city}:\n{json.dumps(summary,indent=2)}\n\nProvide:\n1. Risk assessment (pollution, heat, drought, flood)\n2. Agriculture impact\n3. Farmer action steps\n4. 30-day outlook\n\nBe specific and actionable.",
+                system="You are an expert environmental and agricultural analyst. Be concise and practical."
             )
-            st.markdown(f'<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(74,222,128,0.2);border-radius:14px;padding:1.2rem 1.4rem;color:#e8f4e8;line-height:1.7">{result.replace(chr(10),"<br>")}</div>', unsafe_allow_html=True)
+            st.markdown(f"""
+<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(74,222,128,0.2);
+     border-radius:14px;padding:1.2rem 1.4rem;color:#e8f4e8;line-height:1.7">
+{result.replace(chr(10),'<br>')}
+</div>
+""", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════
 # TAB 3 — CROP ADVISOR
 # ══════════════════════════════════════════════════════════
 with tab3:
     st.markdown('<div class="section-title">Recommended Crops</div>', unsafe_allow_html=True)
-    st.caption(f"{city.title()}: {cur['temperature_2m']:.1f}°C · {cur['relative_humidity_2m']}% humidity · Pollution Score {pollution_score or 'N/A'}")
+    st.caption(f"{city.title()}: {cur['temperature_2m']:.1f}°C · {cur['relative_humidity_2m']}% humidity · Pollution Score {pollution_score if pollution_score is not None else 'N/A'}/100")
 
     crops = recommend_crops(weather)
     if crops:
         for name, score, reason, care in crops:
             st.markdown(f"""
-            <div class="crop-card">
-                <div style="display:flex;justify-content:space-between;align-items:center">
-                    <span class="crop-name">{name}</span>
-                    <span class="crop-score">Match {score}%</span>
-                </div>
-                <div style="color:#a7f3d0;font-size:0.85rem;margin-top:6px">{reason}</div>
-                <div style="color:#6ee7b7;font-size:0.8rem;margin-top:4px">📋 {care}</div>
-            </div>
-            """, unsafe_allow_html=True)
+<div class="crop-card">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+        <span class="crop-name">{name}</span>
+        <span class="crop-score">Match {score}%</span>
+    </div>
+    <div style="color:#a7f3d0;font-size:0.85rem;margin-top:6px">{reason}</div>
+    <div style="color:#6ee7b7;font-size:0.8rem;margin-top:4px">📋 {care}</div>
+</div>
+""", unsafe_allow_html=True)
     else:
         st.info("No crop recommendations for current conditions.")
 
     st.markdown('<div class="section-title">AI Crop Management Plan</div>', unsafe_allow_html=True)
-    selected_crop = st.selectbox("Choose a crop", [c[0] for c in crops] if crops else ["No crops available"])
+    selected_crop = st.selectbox(
+        "Choose a crop",
+        [c[0] for c in crops] if crops else ["No crops available"]
+    )
 
     if st.button("📋 Generate Management Plan", type="primary") and crops:
         with st.spinner("Generating plan..."):
@@ -723,18 +676,31 @@ with tab3:
                 f"""Detailed management plan for {selected_crop} in {city}, {country}.
 Conditions: {cur['temperature_2m']:.1f}°C, {cur['relative_humidity_2m']}% humidity,
 UV {cur.get('uv_index',0) or 0:.0f}, Wind {cur['wind_speed_10m']:.1f} km/h,
-AQI {aq_cur.get('european_aqi','N/A')}, PM2.5 {aq_cur.get('pm2_5','N/A')} μg/m³.
-Include: sowing, irrigation, fertilisation, pest watch, pollution impact, harvest timeline.""",
-                system="You are an expert agronomist. Practical advice for small to medium farms."
+EU AQI {aq_cur.get('european_aqi','N/A')}, PM2.5 {aq_cur.get('pm2_5','N/A')} ug/m3,
+Pollution Score {pollution_score}/100.
+
+Include:
+1. Sowing and planting guidelines
+2. Irrigation schedule
+3. Fertilisation plan
+4. Pest and disease watch
+5. Pollution impact on this crop and how to mitigate
+6. Expected harvest timeline""",
+                system="You are an expert agronomist. Give specific practical advice for small to medium farms."
             )
-            st.markdown(f'<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(74,222,128,0.2);border-radius:14px;padding:1.2rem 1.4rem;color:#e8f4e8;line-height:1.7">{result.replace(chr(10),"<br>")}</div>', unsafe_allow_html=True)
+            st.markdown(f"""
+<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(74,222,128,0.2);
+     border-radius:14px;padding:1.2rem 1.4rem;color:#e8f4e8;line-height:1.7">
+{result.replace(chr(10),'<br>')}
+</div>
+""", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════
 # TAB 4 — CHATBOT
 # ══════════════════════════════════════════════════════════
 with tab4:
     st.markdown('<div class="section-title">Crop Care Chatbot</div>', unsafe_allow_html=True)
-    st.caption("Ask anything about crop care, pests, irrigation, soil health, or pollution effects.")
+    st.caption("Ask anything about crop care, pests, irrigation, soil health, or pollution effects on crops.")
 
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
@@ -753,12 +719,13 @@ with tab4:
         with st.spinner("Thinking..."):
             reply = ask_groq_chat(
                 st.session_state.chat_history,
-                system=f"""You are Aeroveda's expert crop advisor.
+                system=f"""You are Aeroveda's expert crop care advisor and agronomist.
 Location: {city}, {country}
-Weather: {cur['temperature_2m']:.1f}°C, {cur['relative_humidity_2m']}% humidity, {weather_description(cur['weather_code'])}
-Air Quality: AQI {aq_cur.get('european_aqi','N/A')}, Pollution Score {pollution_score or 'N/A'}
-{'Crop focus: ' + crop_ctx if crop_ctx else ''}
-Be concise and practical. Use bullet points."""
+Weather: {cur['temperature_2m']:.1f}C, {cur['relative_humidity_2m']}% humidity, {weather_description(cur['weather_code'])}
+Air Quality: EU AQI {aq_cur.get('european_aqi','N/A')}, Pollution Score {pollution_score if pollution_score is not None else 'N/A'}/100
+{'Focused crop: ' + crop_ctx if crop_ctx else ''}
+Be concise and practical. Use bullet points where helpful.""",
+                max_tokens=700
             )
         st.session_state.chat_history.append({"role": "assistant", "content": reply})
         st.rerun()
