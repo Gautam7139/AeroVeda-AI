@@ -490,7 +490,7 @@ def ask_groq_chat(msgs, system, max_tokens=800):
     except Exception as e: return f"Error: {e}"
 
 @st.cache_data(ttl=1800)
-def fetch_weather(lat, lon):
+def fetch_weather(lat,lon):
     url=(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}"
          f"&current=temperature_2m,relative_humidity_2m,apparent_temperature,"
          f"precipitation,rain,wind_speed_10m,wind_direction_10m,"
