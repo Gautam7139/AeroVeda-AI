@@ -899,14 +899,35 @@ function drawFrame(){
 
   // HUD labels
   ctx.fillStyle='rgba(0,200,255,0.5)';ctx.font='9px Orbitron,monospace';
-  ctx.fillText('◈ {city_name.upper()}',cx-20,cy-R-14);
+  ctx.fillText('__CITY__',cx-20,cy-R-14);
   ctx.fillStyle='rgba(0,160,190,0.4)';ctx.font='8px monospace';
-  ctx.fillText('{lat:.2f}°N {lon:.2f}°E',cx-24,cy-R-4);
+  ctx.fillText('__COORDS__',cx-24,cy-R-4);
 
   t++;requestAnimationFrame(drawFrame);
-}}
+}
 drawFrame();
 </script></body></html>"""
+        # Inject Python variables safely
+        globe_html = (globe_html
+            .replace("__LAT__", str(lat))
+            .replace("__LON__", str(lon))
+            .replace("__CITY__", f"◈ {city_name.upper()}")
+            .replace("__COORDS__", f"{lat:.2f}°N {lon:.2f}°E")
+            .replace("__TLAT__", str(lat))
+            .replace("__TLON__", str(lon))
+            .replace("__ZA__", str(lat+0.12))
+            .replace("__ZB__", str(lon-0.09))
+            .replace("__ZC__", str(lat-0.08))
+            .replace("__ZD__", str(lon+0.18))
+            .replace("__ZE__", str(lat+0.20))
+            .replace("__ZF__", str(lon+0.10))
+            .replace("__ZG__", str(lat-0.16))
+            .replace("__ZH__", str(lon-0.12))
+            .replace("__ZI__", str(lat+0.06))
+            .replace("__ZJ__", str(lon-0.22))
+            .replace("__ZK__", str(lat-0.05))
+            .replace("__ZL__", str(lon+0.26))
+        )
         st.markdown('<div class="card cp" style="padding:1rem 1.4rem"><div class="ct">PLANETARY OVERVIEW</div>', unsafe_allow_html=True)
         import streamlit.components.v1 as components
         components.html(globe_html, height=390, scrolling=False)
