@@ -660,277 +660,302 @@ tabs = st.tabs(["🌍 OVERVIEW","◈ ENVIRONMENT","⚠ CRISIS INTEL","🌱 CROP 
 with tabs[0]:
     r1 = st.columns([1.2, 1, 0.9])
 
-    # ── Globe (realistic Earth) ──
+    # ── Globe — accurate Earth continents ──
     with r1[0]:
-        # Build globe HTML — use .replace() to inject Python vars safely, avoid f-string JS brace conflicts
+        import streamlit.components.v1 as components
+
+        # All Python vars substituted via string replace — NO f-string around JS
+        _lat = str(lat)
+        _lon = str(lon)
+        _city = f"◈ {city_name.upper()}"
+        _coords = f"{lat:.2f}°N {lon:.2f}°E"
+        # zone offsets
+        _za,_zb = str(round(lat+0.15,4)), str(round(lon-0.10,4))
+        _zc,_zd = str(round(lat-0.10,4)), str(round(lon+0.22,4))
+        _ze,_zf = str(round(lat+0.22,4)), str(round(lon+0.12,4))
+        _zg,_zh = str(round(lat-0.18,4)), str(round(lon-0.14,4))
+        _zi,_zj = str(round(lat+0.07,4)), str(round(lon-0.24,4))
+        _zk,_zl = str(round(lat-0.06,4)), str(round(lon+0.28,4))
+
+        globe_js = (
+            "var _LAT=" + _lat + ",_LON=" + _lon + ";\n"
+            "var _ZONES=["
+            "[" + _za + "," + _zb + ",0],"
+            "[" + _zc + "," + _zd + ",1],"
+            "[" + _ze + "," + _zf + ",2],"
+            "[" + _zg + "," + _zh + ",1],"
+            "[" + _zi + "," + _zj + ",3],"
+            "[" + _zk + "," + _zl + ",0]];\n"
+            "var _CITY='" + _city + "',_COORDS='" + _coords + "';\n"
+        )
+
         globe_html = """<!DOCTYPE html><html><head><meta charset="utf-8"/>
-<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#040d12;overflow:hidden}canvas{display:block;width:100%;height:380px}</style>
-</head><body>
-<canvas id="c" width="520" height="380"></canvas>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#040d12;overflow:hidden}
+canvas{display:block}
+</style></head><body>
+<canvas id="c"></canvas>
 <script>
-var c=document.getElementById('c'),ctx=c.getContext('2d');
-var W=520,H=380,cx=W/2,cy=H/2+10,R=Math.min(W,H)*0.4,t=0,speed=0.004;
-var tlat=__LAT__*Math.PI/180,tlon=__LON__*Math.PI/180;
-var rotY=Math.PI-tlon,rotX=-tlat*0.45;
+""" + globe_js + """
+var canvas=document.getElementById('c');
+var W=canvas.parentElement.offsetWidth||520,H=420;
+canvas.width=W;canvas.height=H;
+var ctx=canvas.getContext('2d');
+var cx=W/2,cy=H/2,R=Math.min(W*0.42,H*0.42),t=0,spd=0.003;
+var rotY=Math.PI-(_LON*Math.PI/180),rotX=-(_LAT*Math.PI/180)*0.5;
 
-// Stars
-var stars=[];
-for(var i=0;i<250;i++) stars.push([Math.random()*W,Math.random()*H,Math.random()]);
+// ── Stars ──
+var STARS=[];
+for(var i=0;i<300;i++) STARS.push([Math.random()*W,Math.random()*H,Math.random()]);
 
-// Real continent outlines (simplified but recognisable)
-var LAND=[
-  // SOUTH ASIA (India)
-  [[37,68],[37,78],[25,62],[22,68],[20,73],[15,74],[10,77],[8,77],[8,80],[13,80],[18,84],[20,87],[22,88],[24,92],[26,92],[28,97],[30,97],[34,76],[36,74],[37,68]],
-  // SOUTHEAST ASIA
-  [[28,97],[22,100],[18,100],[15,100],[12,102],[10,104],[4,108],[1,104],[-6,107],[-8,115],[-8,125],[0,120],[5,115],[10,119],[18,110],[22,114],[25,120],[30,122],[22,108],[28,97]],
-  // CHINA/EAST ASIA
-  [[22,108],[25,120],[30,122],[35,120],[38,118],[40,120],[42,130],[48,135],[52,142],[54,138],[52,130],[46,122],[40,118],[36,110],[32,114],[28,112],[25,112],[22,108]],
-  // CENTRAL/WEST ASIA
-  [[37,68],[40,72],[42,78],[44,82],[50,80],[55,70],[58,60],[55,50],[48,45],[40,40],[37,42],[36,36],[37,30],[36,28],[37,22],[37,15],[37,10],[36,8],[37,2],[37,-6],[34,36],[37,68]],
-  // EUROPE
-  [[36,-6],[36,28],[48,40],[55,38],[60,30],[65,26],[70,28],[72,26],[68,18],[60,22],[58,14],[54,10],[50,8],[48,6],[44,2],[42,-2],[40,-8],[36,-6]],
-  // AFRICA
-  [[37,10],[36,36],[25,38],[12,44],[10,42],[4,40],[-5,40],[-16,38],[-26,33],[-35,18],[-35,-16],[-26,-32],[-14,-36],[-6,-35],[0,-8],[4,8],[15,12],[22,38],[37,10]],
-  // NORTH AMERICA
-  [[72,-140],[68,-136],[60,-145],[58,-136],[54,-130],[48,-124],[38,-122],[32,-118],[24,-110],[20,-110],[20,-98],[16,-92],[14,-90],[18,-88],[24,-80],[30,-80],[38,-75],[44,-66],[50,-54],[56,-60],[66,-62],[72,-80],[74,-90],[72,-110],[72,-140]],
-  // SOUTH AMERICA
-  [[10,-62],[8,-60],[4,-52],[0,-50],[-4,-42],[-10,-38],[-24,-44],[-34,-54],[-56,-68],[-56,-64],[-42,-64],[-24,-44],[-18,-70],[-16,-72],[-8,-78],[0,-80],[6,-77],[10,-72],[10,-62]],
-  // AUSTRALIA
-  [[-14,128],[-12,136],[-16,140],[-24,154],[-38,148],[-38,116],[-22,114],[-14,128]],
-  // JAPAN
-  [[30,130],[34,136],[36,140],[40,142],[42,144],[44,142],[42,140],[38,140],[34,136],[30,130]],
-  // UK/IRELAND
-  [[50,-6],[58,-6],[60,-2],[58,0],[52,2],[50,2],[50,-6]],
-  // INDONESIA main
-  [[-2,106],[0,104],[4,100],[2,108],[-2,114],[-8,115],[-8,114],[-2,106]],
-];
+// ── Accurate continent polygons [lat,lon] ──
+// Africa
+var AF=[[-34.5,26.9],[-29.3,17.1],[-22.1,14.4],[-17.0,11.8],[-11.7,14.0],[-6.3,12.1],[-5.1,10.4],[1.6,9.8],[4.0,6.5],[4.6,2.3],[4.3,-2.0],[5.1,-2.8],[4.9,-3.2],[5.3,-5.4],[4.8,-8.4],[6.5,-11.5],[9.6,-15.1],[12.2,-17.0],[15.1,-17.3],[16.6,-12.0],[17.5,-11.8],[18.9,-11.7],[20.3,-13.0],[22.0,-14.0],[24.3,-14.4],[26.7,-15.7],[29.6,-18.0],[32.7,-26.8],[34.5,-26.9],[34.9,-22.5],[35.7,-18.0],[37.3,-11.3],[38.9,-6.4],[41.8,-1.6],[41.5,2.0],[44.5,11.5],[47.5,11.0],[51.3,11.8],[43.7,12.6],[42.6,16.6],[37.2,22.0],[36.0,30.0],[34.3,31.3],[32.9,29.8],[25.6,31.7],[22.9,37.0],[18.9,37.9],[10.0,44.0],[11.4,51.1],[12.5,44.0],[11.5,42.7],[8.0,38.5],[4.0,41.9],[-0.5,42.0],[-5.0,39.0],[-11.0,36.9],[-17.0,16.5],[-20.0,12.0],[-21.4,17.0],[-26.6,15.5],[-34.5,26.9]];
+// Europe + West Russia
+var EU=[[36.0,-9.5],[36.0,28.2],[38.0,26.5],[40.0,28.0],[41.5,31.0],[43.0,40.0],[47.0,37.5],[47.0,33.0],[45.5,30.0],[45.5,22.0],[47.0,18.0],[48.5,14.0],[54.5,18.5],[55.0,22.0],[55.0,25.0],[56.0,21.0],[59.0,28.0],[60.0,30.0],[60.0,25.0],[63.0,26.0],[65.0,25.0],[68.0,28.0],[70.5,31.0],[71.5,28.5],[70.0,20.0],[65.0,14.0],[62.0,5.0],[58.0,5.0],[57.5,8.0],[55.5,8.5],[54.0,10.0],[54.5,18.5],[52.0,14.0],[51.0,14.0],[50.5,12.0],[50.0,8.0],[48.5,7.5],[48.0,6.5],[47.0,2.0],[45.5,-1.0],[43.5,-2.0],[43.5,-8.5],[41.0,-9.0],[38.5,-9.5],[36.5,-7.0],[36.0,-5.5],[36.0,-9.5]];
+// Asia (main landmass)
+var AS=[[36.0,28.2],[38.0,26.5],[36.5,36.0],[37.0,40.0],[39.0,45.0],[40.0,52.0],[41.5,52.5],[42.5,52.0],[44.0,50.0],[46.0,49.5],[46.5,47.0],[47.0,42.0],[47.0,37.5],[43.0,40.0],[41.5,31.0],[40.0,28.0],[36.0,28.2]];
+// Central+South+East Asia mega block
+var AS2=[[37.0,68.0],[40.0,71.0],[42.0,79.0],[45.0,82.5],[49.0,87.0],[53.0,86.5],[55.0,83.0],[57.0,70.0],[60.0,60.0],[61.0,56.0],[58.0,50.0],[55.0,47.0],[50.0,46.5],[47.0,47.0],[46.5,49.5],[46.0,49.5],[44.0,50.0],[42.5,52.0],[41.5,52.5],[40.0,52.0],[39.0,45.0],[37.0,40.0],[36.5,36.0],[34.0,36.5],[32.5,34.9],[30.5,32.3],[27.5,34.5],[22.5,39.5],[12.5,44.0],[11.5,42.7],[8.0,38.5],[11.5,42.7],[15.0,40.0],[22.0,38.5],[27.5,34.5],[29.5,35.0],[32.5,34.9],[35.0,36.5],[36.5,36.0],[38.0,38.0],[39.5,40.5],[39.0,45.0],[37.5,47.0],[35.5,50.0],[33.5,58.5],[30.0,61.0],[25.0,62.0],[23.5,59.0],[22.0,57.5],[22.5,55.5],[24.0,54.5],[23.0,51.5],[20.5,56.0],[18.0,57.5],[15.0,54.0],[12.5,50.0],[8.0,44.5],[9.5,44.0],[10.0,49.5],[12.5,44.0],[15.5,38.0],[15.0,40.0],[17.5,40.0],[20.0,42.0],[20.0,45.0],[22.5,48.0],[26.5,50.0],[29.0,48.5],[30.0,48.0],[32.0,46.5],[34.0,44.0],[35.0,41.0],[36.5,36.0]];
+// India subcontinent
+var IN=[[37.0,68.0],[35.5,74.5],[34.5,76.5],[32.5,77.0],[29.5,71.5],[24.5,68.5],[22.5,69.5],[21.0,72.5],[17.0,73.5],[14.5,74.5],[9.5,77.0],[8.0,77.5],[8.0,80.5],[10.0,80.5],[14.0,80.8],[16.0,82.0],[20.5,87.0],[23.0,88.5],[24.5,88.5],[25.5,89.0],[26.5,89.5],[27.5,89.0],[28.0,94.0],[27.5,96.5],[26.5,92.0],[24.5,91.5],[23.0,91.0],[23.5,91.6],[21.5,92.5],[22.5,92.5],[24.0,94.5],[26.5,92.0],[27.5,96.5],[28.0,98.0],[30.0,97.5],[32.0,97.0],[35.0,79.5],[37.0,77.0],[37.0,68.0]];
+// SE Asia
+var SEA=[[28.0,98.0],[25.0,98.5],[23.5,98.0],[22.0,100.5],[21.0,100.0],[20.0,100.5],[18.5,102.5],[17.5,104.0],[16.0,102.5],[14.5,101.0],[12.5,102.0],[10.5,103.5],[10.5,104.5],[9.0,103.0],[10.5,104.5],[11.5,108.5],[16.0,108.0],[18.0,106.5],[17.5,106.5],[19.0,105.0],[20.0,106.5],[20.5,107.0],[21.5,107.0],[23.0,107.0],[23.5,107.0],[25.0,106.0],[26.0,105.0],[26.5,106.5],[27.5,106.5],[28.0,104.0],[26.0,103.0],[25.5,101.0],[25.0,100.0],[23.5,98.0],[25.0,98.5],[28.0,98.0]];
+// East Asia / China
+var EA=[[28.0,98.0],[30.0,97.5],[32.0,97.0],[35.0,79.5],[37.0,77.0],[39.0,75.5],[42.0,79.0],[44.0,79.0],[49.0,87.0],[51.0,86.5],[53.0,86.5],[55.0,83.0],[57.0,70.0],[60.0,60.0],[65.0,55.0],[68.0,60.0],[72.0,60.0],[72.0,68.0],[73.5,80.0],[72.5,105.5],[71.5,130.0],[69.5,141.5],[67.0,142.5],[64.0,143.0],[61.5,141.5],[59.5,143.5],[55.5,141.5],[53.5,141.5],[53.0,140.5],[52.5,141.5],[50.5,140.5],[49.5,140.5],[48.5,135.5],[46.5,134.5],[44.5,135.5],[43.5,135.5],[43.0,131.5],[42.5,131.0],[41.5,131.0],[40.5,129.5],[39.5,128.0],[38.5,124.5],[38.0,121.0],[37.0,122.5],[35.5,121.0],[34.5,120.0],[33.5,121.5],[32.5,122.0],[31.0,122.5],[30.5,122.0],[30.0,122.5],[29.0,122.0],[28.5,121.0],[27.5,120.0],[27.0,120.5],[26.0,120.0],[24.5,118.5],[23.5,117.5],[22.5,114.5],[22.0,114.0],[21.5,110.5],[21.0,109.0],[20.0,110.0],[20.5,109.5],[21.0,108.0],[20.5,107.0],[21.5,107.0],[23.0,107.0],[23.5,107.0],[25.0,106.0],[26.0,105.0],[26.5,106.5],[27.5,106.5],[28.0,104.0],[28.0,98.0]];
+// North America
+var NA=[[71.5,-156.0],[71.5,-163.0],[70.5,-158.0],[69.5,-161.0],[68.0,-166.0],[66.0,-168.0],[65.0,-168.5],[63.5,-166.0],[63.5,-162.0],[61.5,-165.0],[60.0,-163.0],[58.5,-162.5],[57.5,-153.5],[57.0,-154.0],[56.0,-156.5],[55.0,-160.0],[53.5,-166.5],[52.5,-169.5],[52.0,-172.5],[53.0,-170.0],[54.0,-165.5],[55.5,-163.0],[58.0,-152.5],[59.0,-151.0],[59.5,-149.0],[60.5,-147.0],[59.5,-146.0],[60.0,-142.0],[60.5,-140.5],[59.5,-139.5],[58.5,-136.5],[56.5,-134.5],[56.0,-130.0],[54.0,-130.5],[53.0,-128.5],[51.0,-128.0],[50.0,-127.5],[49.0,-124.0],[48.5,-124.5],[47.5,-122.5],[46.5,-124.0],[43.5,-124.5],[40.5,-124.5],[38.5,-123.0],[37.5,-122.5],[34.5,-120.5],[33.5,-118.0],[32.5,-117.5],[32.0,-117.0],[29.5,-115.0],[24.5,-110.5],[22.5,-105.5],[20.5,-105.5],[18.5,-103.5],[15.5,-95.5],[14.5,-92.5],[15.5,-88.5],[14.0,-83.5],[9.5,-83.0],[9.0,-79.5],[8.5,-77.5],[9.5,-77.5],[10.0,-75.5],[11.5,-74.0],[12.5,-72.0],[12.0,-69.5],[10.5,-68.0],[10.5,-65.0],[11.0,-63.5],[11.5,-64.0],[11.5,-61.5],[10.5,-61.0],[11.0,-60.0],[10.5,-61.5],[9.5,-63.5],[10.5,-62.5],[10.5,-61.0],[11.0,-60.5],[10.5,-59.5],[15.5,-60.0],[17.5,-63.5],[19.0,-69.0],[17.5,-71.5],[18.0,-75.0],[19.5,-72.5],[20.0,-73.0],[21.0,-75.5],[22.0,-79.5],[23.0,-82.0],[24.0,-83.0],[25.5,-80.5],[27.5,-80.0],[30.5,-81.0],[32.5,-80.5],[35.0,-75.5],[36.5,-76.0],[37.5,-76.0],[37.0,-77.0],[38.5,-76.5],[39.5,-75.5],[39.5,-74.5],[40.5,-74.0],[41.0,-72.0],[41.5,-70.5],[42.0,-70.0],[42.5,-71.0],[43.5,-70.5],[44.5,-67.0],[45.5,-64.5],[47.5,-53.5],[46.5,-53.5],[47.5,-52.5],[46.5,-53.5],[46.0,-59.5],[46.5,-64.5],[44.5,-64.5],[44.5,-63.5],[45.5,-63.0],[44.5,-63.5],[43.5,-65.5],[43.5,-66.0],[45.0,-66.5],[47.0,-52.5],[49.0,-55.5],[51.0,-57.0],[52.5,-56.0],[53.5,-56.5],[56.0,-62.5],[58.0,-64.0],[60.0,-63.5],[62.0,-64.0],[63.5,-64.5],[66.0,-62.5],[69.5,-58.5],[71.5,-55.5],[72.5,-56.5],[74.0,-57.0],[75.5,-63.0],[76.5,-68.5],[76.0,-73.5],[77.0,-75.0],[78.5,-73.5],[79.5,-71.0],[79.5,-74.5],[80.5,-80.0],[80.0,-86.0],[80.5,-90.0],[82.0,-90.0],[83.5,-88.5],[82.5,-84.5],[81.5,-79.5],[80.5,-75.0],[80.0,-71.5],[80.5,-68.0],[81.5,-65.5],[82.0,-62.0],[83.0,-64.5],[83.5,-68.5],[83.0,-77.5],[82.5,-85.5],[82.5,-95.0],[83.0,-100.5],[83.5,-111.0],[83.5,-121.5],[83.0,-131.0],[82.0,-139.0],[81.0,-137.5],[79.5,-135.5],[79.5,-141.5],[80.0,-147.5],[80.5,-143.5],[81.0,-150.0],[80.5,-155.5],[80.0,-155.5],[79.5,-160.0],[79.5,-165.0],[78.5,-168.5],[77.5,-165.0],[76.5,-162.5],[74.5,-157.5],[73.5,-157.0],[72.5,-154.0],[71.5,-156.0]];
+// South America
+var SA=[[12.5,-72.0],[12.0,-69.5],[11.5,-70.0],[10.5,-62.5],[9.5,-63.5],[10.5,-62.0],[11.0,-61.5],[10.5,-61.5],[11.5,-61.5],[11.5,-64.0],[10.0,-63.5],[10.5,-65.0],[10.5,-68.0],[12.0,-69.5],[12.5,-72.0],[10.0,-75.5],[9.5,-77.5],[8.5,-77.5],[6.0,-77.5],[3.5,-77.5],[1.5,-79.0],[0.5,-80.0],[-1.0,-80.5],[-3.5,-80.5],[-6.0,-81.0],[-8.0,-80.0],[-10.0,-78.5],[-14.0,-76.0],[-17.5,-71.5],[-18.5,-70.5],[-20.0,-70.0],[-22.0,-70.5],[-24.5,-70.5],[-27.0,-71.0],[-29.5,-71.5],[-30.5,-72.0],[-33.0,-71.5],[-35.5,-73.0],[-37.5,-73.5],[-40.0,-73.5],[-43.5,-73.5],[-46.5,-75.0],[-47.5,-75.0],[-49.0,-75.5],[-50.5,-74.5],[-51.5,-74.0],[-52.5,-74.5],[-53.5,-70.5],[-55.5,-66.5],[-55.5,-68.0],[-54.5,-65.0],[-52.5,-68.5],[-51.5,-69.0],[-51.0,-69.0],[-54.0,-65.5],[-55.0,-66.5],[-52.5,-66.0],[-51.0,-62.0],[-48.5,-65.5],[-49.5,-68.5],[-51.5,-69.0],[-50.0,-70.5],[-51.5,-72.0],[-52.5,-74.5],[-53.5,-70.5],[-52.5,-68.5],[-50.0,-69.0],[-48.5,-65.5],[-46.0,-65.5],[-43.5,-65.5],[-40.5,-62.5],[-38.5,-62.5],[-36.5,-56.5],[-34.5,-57.0],[-34.0,-52.0],[-31.5,-50.5],[-29.0,-49.5],[-28.0,-48.5],[-26.0,-48.5],[-24.5,-47.0],[-22.5,-43.0],[-21.0,-41.0],[-19.5,-40.0],[-16.0,-39.0],[-13.0,-38.5],[-12.0,-38.5],[-10.5,-37.0],[-8.5,-35.0],[-8.0,-34.5],[-7.0,-35.0],[-3.5,-38.5],[-1.5,-43.5],[0.0,-50.0],[1.0,-50.5],[2.5,-50.0],[4.0,-51.5],[5.0,-52.5],[5.5,-54.0],[5.5,-55.0],[5.5,-56.5],[5.5,-57.5],[6.0,-57.5],[7.5,-57.5],[8.0,-60.0],[8.5,-61.5],[8.0,-63.0],[6.5,-62.5],[4.0,-61.0],[3.5,-60.0],[1.0,-60.5],[-1.5,-61.5],[-0.5,-65.0],[1.0,-66.5],[2.0,-63.5],[4.0,-67.5],[6.0,-67.5],[8.5,-61.5],[10.5,-62.5],[12.5,-72.0]];
+// Australia
+var AU=[[-14.0,128.5],[-13.0,130.0],[-12.0,131.5],[-11.5,131.5],[-11.5,132.5],[-12.0,136.0],[-12.5,136.5],[-11.5,136.5],[-12.0,137.0],[-12.0,135.5],[-11.5,134.0],[-12.5,131.5],[-14.0,128.5]];
+var AU2=[[-16.5,136.0],[-15.5,137.0],[-14.5,137.0],[-14.5,136.0],[-13.5,136.0],[-13.0,136.5],[-12.5,136.5],[-11.5,136.5],[-12.5,137.0],[-12.0,137.0],[-12.0,135.5],[-11.5,134.0],[-12.0,131.5],[-13.0,130.0],[-14.0,128.5],[-15.5,129.5],[-16.5,122.5],[-20.0,118.5],[-22.0,114.0],[-26.5,114.5],[-28.0,114.0],[-31.5,115.5],[-34.0,115.0],[-34.5,117.5],[-35.5,117.5],[-34.5,119.0],[-34.0,122.0],[-33.0,124.0],[-32.0,127.0],[-32.0,133.0],[-32.0,134.0],[-29.5,132.0],[-28.0,136.5],[-26.0,137.5],[-24.5,139.5],[-20.0,140.0],[-18.0,140.5],[-17.5,140.5],[-15.5,141.5],[-14.5,141.5],[-12.5,141.5],[-12.5,143.5],[-12.0,143.5],[-10.5,142.0],[-10.5,141.5],[-11.5,142.0],[-12.5,143.5],[-13.5,143.5],[-14.5,144.5],[-15.5,145.5],[-16.5,145.5],[-18.0,146.0],[-18.5,147.0],[-20.5,148.5],[-22.5,150.5],[-24.5,153.5],[-26.5,153.5],[-28.5,153.5],[-30.0,153.5],[-31.5,153.0],[-32.5,152.5],[-33.5,151.5],[-34.0,151.0],[-36.0,150.0],[-37.5,149.5],[-38.5,148.0],[-38.5,147.0],[-38.0,146.0],[-38.5,145.0],[-39.0,147.0],[-38.5,148.0],[-36.5,150.0],[-37.5,149.5],[-39.5,147.5],[-39.5,144.0],[-38.5,141.0],[-37.5,140.5],[-35.5,136.5],[-35.0,138.0],[-34.5,138.5],[-34.5,139.5],[-35.0,138.0],[-35.5,136.5],[-37.5,140.5],[-38.5,141.0],[-39.5,144.0],[-39.5,147.5],[-38.0,148.0],[-38.5,145.0],[-38.0,144.5],[-38.5,144.5],[-38.0,146.0],[-37.5,149.5],[-35.5,150.5],[-33.5,151.5],[-32.5,152.5],[-30.0,153.5],[-28.5,153.5],[-27.0,153.5],[-24.5,153.5],[-22.5,150.5],[-20.5,148.5],[-18.5,147.0],[-18.0,146.0],[-16.5,145.5],[-15.5,145.5],[-14.5,144.5],[-13.5,143.5],[-12.5,143.5],[-11.5,142.0],[-10.5,141.5],[-11.0,142.5],[-12.0,143.5],[-14.5,144.5],[-16.5,145.5],[-18.0,146.0],[-18.5,147.0],[-20.0,148.5],[-22.5,150.5],[-24.5,153.5],[-16.5,145.5],[-15.5,141.5],[-14.5,141.5],[-12.5,141.5],[-12.5,143.5],[-10.5,142.0],[-10.5,141.0],[-13.0,143.0],[-14.5,141.5],[-16.5,136.0]];
+// Greenland
+var GL=[[83.5,-22.0],[83.0,-18.0],[81.5,-16.0],[80.5,-18.0],[81.0,-20.0],[80.5,-22.0],[79.5,-18.0],[78.5,-16.0],[76.5,-18.5],[75.0,-20.5],[73.0,-23.0],[72.5,-25.0],[72.0,-22.0],[71.5,-24.0],[70.5,-22.5],[69.5,-23.5],[68.0,-26.0],[66.5,-34.0],[65.5,-38.0],[64.5,-40.5],[65.5,-45.0],[66.5,-46.0],[67.5,-52.0],[68.0,-57.0],[69.0,-57.5],[69.5,-54.0],[69.5,-51.0],[70.5,-51.0],[72.0,-54.0],[73.0,-56.0],[73.5,-53.5],[74.5,-57.0],[75.5,-58.5],[76.0,-65.0],[76.5,-68.0],[77.0,-67.5],[77.5,-72.5],[77.5,-74.0],[76.5,-73.5],[76.0,-68.0],[76.5,-65.0],[75.5,-58.5],[74.5,-57.0],[74.0,-60.5],[75.0,-57.0],[76.0,-62.0],[77.5,-68.0],[78.5,-70.0],[79.5,-74.0],[80.5,-58.5],[81.0,-56.0],[81.5,-52.0],[82.5,-42.0],[83.0,-30.0],[83.5,-22.0]];
 
-// Ocean color zones (simulated depth)
-var OCEAN_ZONES = [
-  // Pacific deep
-  {la:10,lo:-160,r:28,c:'rgba(0,30,60,0.6)'},
-  {la:-20,lo:-120,r:22,c:'rgba(0,20,50,0.5)'},
-  // Indian Ocean
-  {la:-10,lo:75,r:20,c:'rgba(0,25,55,0.5)'},
-  // Atlantic
-  {la:25,lo:-40,r:22,c:'rgba(0,28,58,0.5)'},
-  // Arctic
-  {la:80,lo:0,r:18,c:'rgba(180,220,240,0.15)'},
-];
+var CONTINENTS=[AF,EU,AS2,IN,SEA,EA,NA,SA,AU2,GL];
+// land color per continent index
+var LCOL=['rgba(60,95,45,','rgba(55,85,40,','rgba(65,95,45,','rgba(55,90,38,','rgba(70,105,48,','rgba(60,92,42,','rgba(50,80,35,','rgba(58,88,40,','rgba(65,100,45,','rgba(200,225,240,'];
+var LSTR=['rgba(80,140,60,','rgba(75,130,55,','rgba(85,145,62,','rgba(75,135,58,','rgba(90,150,65,','rgba(80,138,60,','rgba(70,120,50,','rgba(78,128,58,','rgba(85,145,62,','rgba(220,235,255,'];
 
-function ll3d(la,lo,r){var p=la*Math.PI/180,l=lo*Math.PI/180;return[r*Math.cos(p)*Math.cos(l),r*Math.sin(p),r*Math.cos(p)*Math.sin(l)]}
-function rot3(x,y,z,ry,rx){var x1=x*Math.cos(ry)-z*Math.sin(ry),z1=x*Math.sin(ry)+z*Math.cos(ry),y2=y*Math.cos(rx)-z1*Math.sin(rx),z2=y*Math.sin(rx)+z1*Math.cos(rx);return[x1,y2,z2]}
-function proj(x,y,z){var f=520,s=f/(f+z+R*0.3);return[cx+x*s,cy-y*s,s]}
-function vis(z){return z>-R*0.12}
+function ll3(la,lo,r){
+  var p=la*Math.PI/180,l=lo*Math.PI/180;
+  return[r*Math.cos(p)*Math.cos(l),r*Math.sin(p),r*Math.cos(p)*Math.sin(l)];
+}
+function rot(x,y,z,ry,rx){
+  var x1=x*Math.cos(ry)-z*Math.sin(ry),z1=x*Math.sin(ry)+z*Math.cos(ry);
+  var y2=y*Math.cos(rx)-z1*Math.sin(rx);
+  return[x1,y2,y*Math.sin(rx)+z1*Math.cos(rx)];
+}
+function prj(x,y,z){var f=600,s=f/(f+z+R*0.2);return[cx+x*s,cy-y*s,s];}
+function vis(z){return z>-R*0.08;}
 
-function drawFrame(){
+function draw(){
   ctx.clearRect(0,0,W,H);
+  var cr=rotY+t*spd;
 
   // Background
-  var bg=ctx.createRadialGradient(cx,cy-20,R*0.1,cx,cy,W*0.75);
-  bg.addColorStop(0,'rgba(0,20,35,1)');
-  bg.addColorStop(0.5,'rgba(0,10,20,1)');
-  bg.addColorStop(1,'rgba(4,8,18,1)');
+  var bg=ctx.createRadialGradient(cx,cy,R*0.1,cx,cy,W*0.7);
+  bg.addColorStop(0,'rgba(0,15,28,1)');
+  bg.addColorStop(0.6,'rgba(0,8,16,1)');
+  bg.addColorStop(1,'rgba(2,5,14,1)');
   ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
 
-  // Stars with slight colour variation (cyan/warm)
-  stars.forEach(function(s){
-    var cols=['rgba(180,230,255,','rgba(200,255,220,','rgba(255,240,200,'];
-    ctx.fillStyle=cols[Math.floor(s[2]*3)]+(0.1+s[2]*0.5)+')';
-    ctx.beginPath();ctx.arc(s[0],s[1],s[2]*1.2,0,Math.PI*2);ctx.fill();
+  // Stars
+  STARS.forEach(function(s){
+    var c=s[2];
+    ctx.fillStyle='rgba('+(150+Math.floor(c*105))+','+(180+Math.floor(c*75))+','+(200+Math.floor(c*55))+','+(0.15+c*0.55)+')';
+    ctx.beginPath();ctx.arc(s[0],s[1],c*1.5+0.2,0,Math.PI*2);ctx.fill();
   });
 
-  // Outer atmosphere glow
-  var atm2=ctx.createRadialGradient(cx,cy,R*0.9,cx,cy,R*1.25);
-  atm2.addColorStop(0,'rgba(0,160,220,0.1)');
-  atm2.addColorStop(0.4,'rgba(0,100,180,0.06)');
-  atm2.addColorStop(0.8,'rgba(0,60,120,0.03)');
-  atm2.addColorStop(1,'transparent');
-  ctx.fillStyle=atm2;ctx.beginPath();ctx.arc(cx,cy,R*1.25,0,Math.PI*2);ctx.fill();
+  // Outer glow
+  var og=ctx.createRadialGradient(cx,cy,R*0.85,cx,cy,R*1.3);
+  og.addColorStop(0,'rgba(0,140,200,0.1)');og.addColorStop(0.5,'rgba(0,80,160,0.05)');og.addColorStop(1,'transparent');
+  ctx.fillStyle=og;ctx.beginPath();ctx.arc(cx,cy,R*1.3,0,Math.PI*2);ctx.fill();
 
-  // Clip to globe
+  // Atmosphere haze
+  var ah=ctx.createRadialGradient(cx-R*0.1,cy-R*0.15,R*0.7,cx,cy,R*1.06);
+  ah.addColorStop(0,'rgba(30,160,220,0.14)');ah.addColorStop(0.5,'rgba(0,100,180,0.07)');ah.addColorStop(1,'transparent');
+  ctx.fillStyle=ah;ctx.beginPath();ctx.arc(cx,cy,R*1.06,0,Math.PI*2);ctx.fill();
+
   ctx.save();
   ctx.beginPath();ctx.arc(cx,cy,R,0,Math.PI*2);ctx.clip();
 
-  // ── OCEAN BASE (deep blue-teal, Earth-like) ──
-  var oceanGrad=ctx.createRadialGradient(cx-R*0.25,cy-R*0.2,R*0.05,cx+R*0.1,cy+R*0.1,R);
-  oceanGrad.addColorStop(0,'rgba(0,80,140,0.95)');
-  oceanGrad.addColorStop(0.3,'rgba(0,55,110,0.97)');
-  oceanGrad.addColorStop(0.6,'rgba(0,35,80,0.98)');
-  oceanGrad.addColorStop(1,'rgba(0,15,45,1)');
-  ctx.fillStyle=oceanGrad;
-  ctx.fillRect(cx-R-2,cy-R-2,R*2+4,R*2+4);
+  // Ocean
+  var oc=ctx.createRadialGradient(cx-R*0.3,cy-R*0.25,R*0.05,cx+R*0.15,cy+R*0.15,R);
+  oc.addColorStop(0,'rgba(0,90,155,0.97)');
+  oc.addColorStop(0.35,'rgba(0,60,120,0.98)');
+  oc.addColorStop(0.7,'rgba(0,38,88,0.99)');
+  oc.addColorStop(1,'rgba(0,12,48,1)');
+  ctx.fillStyle=oc;ctx.fillRect(cx-R-1,cy-R-1,R*2+2,R*2+2);
 
-  // Ocean depth variation
-  var cr=rotY+t*speed;
-  OCEAN_ZONES.forEach(function(oz){
-    var p3=ll3d(oz.la,oz.lo,R*0.99),rr=rot3(p3[0],p3[1],p3[2],cr,rotX);
-    if(!vis(rr[2]))return;
-    var pr=proj(rr[0],rr[1],rr[2]);
-    var rr2=oz.r*R/180*pr[2];
-    var og=ctx.createRadialGradient(pr[0],pr[1],0,pr[0],pr[1],rr2);
-    og.addColorStop(0,oz.c);og.addColorStop(1,'transparent');
-    ctx.fillStyle=og;ctx.beginPath();ctx.arc(pr[0],pr[1],rr2,0,Math.PI*2);ctx.fill();
-  });
-
-  // ── LAT/LON GRID (subtle ocean lines) ──
-  ctx.globalAlpha=0.18;
-  for(var la=-80;la<=80;la+=20){
-    ctx.beginPath();var fi=true;
-    for(var lo=-180;lo<=180;lo+=4){
-      var p3=ll3d(la,lo,R);var rr=rot3(p3[0],p3[1],p3[2],cr,rotX);
-      if(!vis(rr[2])){fi=true;continue}
-      var pr=proj(rr[0],rr[1],rr[2]);
-      if(fi){ctx.moveTo(pr[0],pr[1]);fi=false}else ctx.lineTo(pr[0],pr[1]);
-    }
-    ctx.strokeStyle=la===0?'rgba(0,200,255,0.5)':'rgba(0,160,220,0.3)';
-    ctx.lineWidth=la===0?0.7:0.3;ctx.stroke();
-  }
-  for(var lo2=-180;lo2<180;lo2+=30){
-    ctx.beginPath();var fi2=true;
-    for(var la2=-85;la2<=85;la2+=3){
-      var p32=ll3d(la2,lo2,R);var rr2=rot3(p32[0],p32[1],p32[2],cr,rotX);
-      if(!vis(rr2[2])){fi2=true;continue}
-      var pr2=proj(rr2[0],rr2[1],rr2[2]);
-      if(fi2){ctx.moveTo(pr2[0],pr2[1]);fi2=false}else ctx.lineTo(pr2[0],pr2[1]);
-    }
-    ctx.strokeStyle='rgba(0,140,200,0.2)';ctx.lineWidth=0.25;ctx.stroke();
+  // Subtle ocean shimmer
+  ctx.globalAlpha=0.07;
+  for(var sh=0;sh<3;sh++){
+    var shp=ll3(sh*20-20,sh*40+cr*30,R*0.98);
+    var shr=rot(shp[0],shp[1],shp[2],cr,rotX);
+    if(vis(shr[2])){var spp=prj(shr[0],shr[1],shr[2]);var sr=R*0.2*spp[2];var sg=ctx.createRadialGradient(spp[0],spp[1],0,spp[0],spp[1],sr);sg.addColorStop(0,'rgba(0,180,255,1)');sg.addColorStop(1,'transparent');ctx.fillStyle=sg;ctx.beginPath();ctx.arc(spp[0],spp[1],sr,0,Math.PI*2);ctx.fill();}
   }
   ctx.globalAlpha=1;
 
-  // ── LANDMASSES ──
-  LAND.forEach(function(pts){
-    ctx.beginPath();var fc=true;
-    pts.forEach(function(p){
-      var p3=ll3d(p[0],p[1],R*1.001),rr=rot3(p3[0],p3[1],p3[2],cr,rotX);
-      if(rr[2]<-R*0.15){fc=true;return}
-      var pr=proj(rr[0],rr[1],rr[2]);
-      if(fc){ctx.moveTo(pr[0],pr[1]);fc=false}else ctx.lineTo(pr[0],pr[1]);
-    });
-    ctx.closePath();
-    // Earth-like land: green-brown gradient
-    ctx.fillStyle='rgba(34,90,40,0.82)';ctx.fill();
-    ctx.strokeStyle='rgba(60,160,80,0.55)';ctx.lineWidth=0.7;ctx.stroke();
-  });
-
-  // ── ICE CAPS ──
-  [[88,0],[89,60],[88,120],[88,180],[88,240],[88,300],[-88,0],[-88,60],[-88,120],[-88,180],[-88,240],[-88,300]].forEach(function(ic){
-    var p3=ll3d(ic[0],ic[1],R*1.001),rr=rot3(p3[0],p3[1],p3[2],cr,rotX);
-    if(!vis(rr[2]))return;
-    var pr=proj(rr[0],rr[1],rr[2]);
-    ctx.fillStyle='rgba(200,235,255,0.6)';
-    ctx.beginPath();ctx.arc(pr[0],pr[1],10*pr[2],0,Math.PI*2);ctx.fill();
-  });
-
-  // ── AGRICULTURAL ZONES (holographic overlay) ──
-  var zones=[
-    [__ZA__,__ZB__,0],
-    [__ZC__,__ZD__,1],
-    [__ZE__,__ZF__,2],
-    [__ZG__,__ZH__,1],
-    [__ZI__,__ZJ__,3],
-    [__ZK__,__ZL__,0],
-  ];
-  var zc=['#00c8ff','#22d4a0','#dca014','#e07832','#ff2846'];
-  zones.forEach(function(z){
-    var p3=ll3d(z[0],z[1],R*1.003),rr=rot3(p3[0],p3[1],p3[2],cr,rotX);
-    if(!vis(rr[2]))return;
-    var pr=proj(rr[0],rr[1],rr[2]);
-    var col=zc[z[2]];
-    var rads=20*pr[2];
-    var rgb=col==='#00c8ff'?'0,200,255':col==='#22d4a0'?'34,212,160':col==='#dca014'?'220,160,20':col==='#e07832'?'224,120,50':'255,40,70';
-    var zg=ctx.createRadialGradient(pr[0],pr[1],0,pr[0],pr[1],rads);
-    zg.addColorStop(0,'rgba('+rgb+',0.3)');zg.addColorStop(0.5,'rgba('+rgb+',0.1)');zg.addColorStop(1,'transparent');
-    ctx.fillStyle=zg;ctx.beginPath();ctx.arc(pr[0],pr[1],rads,0,Math.PI*2);ctx.fill();
-    var pr2=rads*(1+0.07*Math.sin(t*0.06+z[2]));
-    ctx.strokeStyle='rgba('+rgb+',0.6)';ctx.lineWidth=1;
-    ctx.beginPath();ctx.arc(pr[0],pr[1],pr2,0,Math.PI*2);ctx.stroke();
-  });
-
-  ctx.restore();
-
-  // ── GLOBE BORDER ──
-  var brd=ctx.createLinearGradient(cx-R,cy,cx+R,cy);
-  brd.addColorStop(0,'rgba(0,200,255,0.5)');brd.addColorStop(0.5,'rgba(34,212,160,0.3)');brd.addColorStop(1,'rgba(0,150,220,0.4)');
-  ctx.strokeStyle=brd;ctx.lineWidth=1.5;
-  ctx.beginPath();ctx.arc(cx,cy,R,0,Math.PI*2);ctx.stroke();
-
-  // Atmosphere thin ring
-  ctx.strokeStyle='rgba(0,180,255,0.12)';ctx.lineWidth=3;
-  ctx.beginPath();ctx.arc(cx,cy,R+4,0,Math.PI*2);ctx.stroke();
-  ctx.strokeStyle='rgba(0,200,255,0.05)';ctx.lineWidth=8;
-  ctx.beginPath();ctx.arc(cx,cy,R+8,0,Math.PI*2);ctx.stroke();
-
-  // ── EQUATORIAL HOLOGRAM RING ──
-  ctx.save();ctx.translate(cx,cy);ctx.scale(1,0.2);
-  ctx.strokeStyle='rgba(0,200,255,0.15)';ctx.lineWidth=1.5;
-  ctx.beginPath();ctx.ellipse(0,0,R*1.08,R*1.08,0,0,Math.PI*2);ctx.stroke();
-  ctx.strokeStyle='rgba(34,212,160,0.07)';ctx.lineWidth=8;
-  ctx.beginPath();ctx.ellipse(0,0,R*1.14,R*1.14,0,0,Math.PI*2);ctx.stroke();
-  ctx.restore();
-
-  // ── TARGET LOCATION ──
-  var tp=ll3d(__LAT__,__LON__,R*1.012),tr=rot3(tp[0],tp[1],tp[2],cr,rotX);
-  if(vis(tr[2])){
-    var tpr=proj(tr[0],tr[1],tr[2]);
-    // Pulsing rings
-    for(var ri=1;ri<=4;ri++){
-      var pulse=0.5+0.5*Math.sin(t*0.08-ri*0.5);
-      ctx.strokeStyle='rgba(0,200,255,'+(0.55-ri*0.1)+')';
-      ctx.lineWidth=1+pulse*0.4;
-      ctx.beginPath();ctx.arc(tpr[0],tpr[1],(ri*9+3*pulse)*tpr[2],0,Math.PI*2);ctx.stroke();
+  // Grid lines
+  ctx.globalAlpha=0.12;
+  for(var la=-80;la<=80;la+=20){
+    ctx.beginPath();var fi=true;
+    for(var lo=-180;lo<=180;lo+=3){
+      var p3=ll3(la,lo,R),rr=rot(p3[0],p3[1],p3[2],cr,rotX);
+      if(!vis(rr[2])){fi=true;continue}
+      var pr=prj(rr[0],rr[1],rr[2]);
+      if(fi){ctx.moveTo(pr[0],pr[1]);fi=false}else ctx.lineTo(pr[0],pr[1]);
     }
-    // Crosshair
-    var ch=22*tpr[2];
-    ctx.strokeStyle='rgba(0,200,255,0.7)';ctx.lineWidth=0.8;
-    ctx.beginPath();ctx.moveTo(tpr[0]-ch,tpr[1]);ctx.lineTo(tpr[0]+ch,tpr[1]);ctx.stroke();
-    ctx.beginPath();ctx.moveTo(tpr[0],tpr[1]-ch);ctx.lineTo(tpr[0],tpr[1]+ch);ctx.stroke();
-    // Glow dot
-    var cg=ctx.createRadialGradient(tpr[0],tpr[1],0,tpr[0],tpr[1],12*tpr[2]);
-    cg.addColorStop(0,'rgba(255,255,255,1)');cg.addColorStop(0.25,'rgba(0,220,255,0.9)');
-    cg.addColorStop(0.6,'rgba(34,212,160,0.4)');cg.addColorStop(1,'transparent');
-    ctx.fillStyle=cg;ctx.beginPath();ctx.arc(tpr[0],tpr[1],10*tpr[2],0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle=la===0?'rgba(0,200,255,0.9)':'rgba(0,160,220,0.7)';
+    ctx.lineWidth=la===0?0.8:0.3;ctx.stroke();
+  }
+  for(var lo2=-180;lo2<180;lo2+=30){
+    ctx.beginPath();var fi2=true;
+    for(var la2=-85;la2<=85;la2+=2){
+      var p32=ll3(la2,lo2,R),rr2=rot(p32[0],p32[1],p32[2],cr,rotX);
+      if(!vis(rr2[2])){fi2=true;continue}
+      var pr2=prj(rr2[0],rr2[1],rr2[2]);
+      if(fi2){ctx.moveTo(pr2[0],pr2[1]);fi2=false}else ctx.lineTo(pr2[0],pr2[1]);
+    }
+    ctx.strokeStyle='rgba(0,130,200,0.5)';ctx.lineWidth=0.25;ctx.stroke();
+  }
+  ctx.globalAlpha=1;
+
+  // Draw continents
+  CONTINENTS.forEach(function(pts,ci){
+    if(!pts||pts.length<3)return;
+    ctx.beginPath();var fc=true;
+    for(var pi=0;pi<pts.length;pi++){
+      var p=pts[pi];
+      var p3=ll3(p[0],p[1],R*1.001),rr=rot(p3[0],p3[1],p3[2],cr,rotX);
+      if(rr[2]<-R*0.1){fc=true;continue}
+      var pr=prj(rr[0],rr[1],rr[2]);
+      if(fc){ctx.moveTo(pr[0],pr[1]);fc=false}else ctx.lineTo(pr[0],pr[1]);
+    }
+    ctx.closePath();
+    ctx.fillStyle=LCOL[ci]+'0.85)';ctx.fill();
+    ctx.strokeStyle=LSTR[ci]+'0.5)';ctx.lineWidth=0.6;ctx.stroke();
+  });
+
+  // Arctic ice cap — proper polar cap rendered as lat-band
+  var arcticLats=[75,78,80,82,84,86];
+  arcticLats.forEach(function(la,idx){
+    ctx.beginPath();var fi=true;
+    for(var lo=-180;lo<=180;lo+=4){
+      var p3=ll3(la,lo,R*1.001),rr=rot(p3[0],p3[1],p3[2],cr,rotX);
+      if(!vis(rr[2])){fi=true;continue}
+      var pr=prj(rr[0],rr[1],rr[2]);
+      if(fi){ctx.moveTo(pr[0],pr[1]);fi=false}else ctx.lineTo(pr[0],pr[1]);
+    }
+    ctx.strokeStyle='rgba(200,230,255,'+(0.08+idx*0.06)+')';
+    ctx.lineWidth=idx*1.5+0.5;ctx.stroke();
+  });
+  // Antarctic
+  var antLats=[-75,-78,-80,-82,-84,-86];
+  antLats.forEach(function(la,idx){
+    ctx.beginPath();var fi=true;
+    for(var lo=-180;lo<=180;lo+=4){
+      var p3=ll3(la,lo,R*1.001),rr=rot(p3[0],p3[1],p3[2],cr,rotX);
+      if(!vis(rr[2])){fi=true;continue}
+      var pr=prj(rr[0],rr[1],rr[2]);
+      if(fi){ctx.moveTo(pr[0],pr[1]);fi=false}else ctx.lineTo(pr[0],pr[1]);
+    }
+    ctx.strokeStyle='rgba(210,235,255,'+(0.08+idx*0.06)+')';
+    ctx.lineWidth=idx*1.5+0.5;ctx.stroke();
+  });
+
+  // Cloud wisps
+  var CLOUDS=[
+    [15,-30,0.08],[25,-40,0.06],[35,120,0.07],[-15,80,0.06],[50,10,0.05],[0,-60,0.07]
+  ];
+  CLOUDS.forEach(function(cl){
+    var p3=ll3(cl[0],cl[1]+cr*8,R*1.002),rr=rot(p3[0],p3[1],p3[2],cr,rotX);
+    if(!vis(rr[2]))return;
+    var pr=prj(rr[0],rr[1],rr[2]);
+    var sr=R*0.14*pr[2];
+    var cg=ctx.createRadialGradient(pr[0],pr[1],0,pr[0],pr[1],sr);
+    cg.addColorStop(0,'rgba(255,255,255,'+cl[2]+')');cg.addColorStop(0.5,'rgba(255,255,255,'+(cl[2]*0.4)+')');cg.addColorStop(1,'transparent');
+    ctx.fillStyle=cg;ctx.beginPath();ctx.arc(pr[0],pr[1],sr,0,Math.PI*2);ctx.fill();
+  });
+
+  // Agricultural zones
+  _ZONES.forEach(function(z){
+    var p3=ll3(z[0],z[1],R*1.003),rr=rot(p3[0],p3[1],p3[2],cr,rotX);
+    if(!vis(rr[2]))return;
+    var pr=prj(rr[0],rr[1],rr[2]);
+    var zcc=['#00c8ff','#22d4a0','#dca014','#e07832','#ff2846'][z[2]];
+    var rgbs=['0,200,255','34,212,160','220,160,20','224,120,50','255,40,70'][z[2]];
+    var rads=18*pr[2];
+    var zg=ctx.createRadialGradient(pr[0],pr[1],0,pr[0],pr[1],rads);
+    zg.addColorStop(0,'rgba('+rgbs+',0.25)');zg.addColorStop(0.6,'rgba('+rgbs+',0.08)');zg.addColorStop(1,'transparent');
+    ctx.fillStyle=zg;ctx.beginPath();ctx.arc(pr[0],pr[1],rads,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='rgba('+rgbs+','+(0.5+0.15*Math.sin(t*0.06+z[2]))+')';
+    ctx.lineWidth=0.8;ctx.beginPath();ctx.arc(pr[0],pr[1],rads*(0.95+0.05*Math.sin(t*0.06+z[2])),0,Math.PI*2);ctx.stroke();
+  });
+
+  ctx.restore();
+
+  // Globe border
+  var brd=ctx.createLinearGradient(cx-R,cy,cx+R,cy);
+  brd.addColorStop(0,'rgba(0,180,255,0.55)');brd.addColorStop(0.5,'rgba(34,212,160,0.35)');brd.addColorStop(1,'rgba(0,140,220,0.45)');
+  ctx.strokeStyle=brd;ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(cx,cy,R,0,Math.PI*2);ctx.stroke();
+
+  // Atmosphere glow ring
+  ctx.strokeStyle='rgba(0,180,255,0.1)';ctx.lineWidth=4;ctx.beginPath();ctx.arc(cx,cy,R+3,0,Math.PI*2);ctx.stroke();
+  ctx.strokeStyle='rgba(0,200,255,0.04)';ctx.lineWidth=10;ctx.beginPath();ctx.arc(cx,cy,R+8,0,Math.PI*2);ctx.stroke();
+
+  // Holographic equatorial ring
+  ctx.save();ctx.translate(cx,cy);ctx.scale(1,0.18);
+  ctx.strokeStyle='rgba(0,200,255,0.18)';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.ellipse(0,0,R*1.07,R*1.07,0,0,Math.PI*2);ctx.stroke();
+  ctx.strokeStyle='rgba(34,212,160,0.06)';ctx.lineWidth=9;
+  ctx.beginPath();ctx.ellipse(0,0,R*1.13,R*1.13,0,0,Math.PI*2);ctx.stroke();
+  ctx.restore();
+
+  // Target location marker
+  var tp=ll3(_LAT,_LON,R*1.015),tr=rot(tp[0],tp[1],tp[2],cr,rotX);
+  if(vis(tr[2])){
+    var tpr=prj(tr[0],tr[1],tr[2]);
+    for(var ri=1;ri<=3;ri++){
+      var pulse=0.5+0.5*Math.sin(t*0.09-ri*0.6);
+      ctx.strokeStyle='rgba(0,200,255,'+(0.55-ri*0.12)+')';
+      ctx.lineWidth=0.9+pulse*0.4;
+      ctx.beginPath();ctx.arc(tpr[0],tpr[1],(ri*10+2*pulse)*tpr[2],0,Math.PI*2);ctx.stroke();
+    }
+    // Crosshair lines
+    var ch=20*tpr[2];
+    ctx.strokeStyle='rgba(0,200,255,0.7)';ctx.lineWidth=0.7;
+    ctx.beginPath();ctx.moveTo(tpr[0]-ch,tpr[1]);ctx.lineTo(tpr[0]-6*tpr[2],tpr[1]);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(tpr[0]+6*tpr[2],tpr[1]);ctx.lineTo(tpr[0]+ch,tpr[1]);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(tpr[0],tpr[1]-ch);ctx.lineTo(tpr[0],tpr[1]-6*tpr[2]);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(tpr[0],tpr[1]+6*tpr[2]);ctx.lineTo(tpr[0],tpr[1]+ch);ctx.stroke();
+    // Bright dot
+    var cg=ctx.createRadialGradient(tpr[0],tpr[1],0,tpr[0],tpr[1],10*tpr[2]);
+    cg.addColorStop(0,'rgba(255,255,255,1)');cg.addColorStop(0.2,'rgba(0,230,255,0.95)');
+    cg.addColorStop(0.6,'rgba(34,212,160,0.3)');cg.addColorStop(1,'transparent');
+    ctx.fillStyle=cg;ctx.beginPath();ctx.arc(tpr[0],tpr[1],9*tpr[2],0,Math.PI*2);ctx.fill();
   }
 
-  // ── AXIS ──
-  ctx.strokeStyle='rgba(0,200,255,0.08)';ctx.lineWidth=0.5;ctx.setLineDash([4,5]);
-  ctx.beginPath();ctx.moveTo(cx,cy-R*1.15);ctx.lineTo(cx,cy+R*1.15);ctx.stroke();
-  ctx.setLineDash([]);
+  // City label
+  ctx.fillStyle='rgba(0,200,255,0.7)';
+  ctx.font='bold 10px Orbitron,monospace';
+  ctx.textAlign='center';
+  ctx.fillText(_CITY,cx,cy-R-18);
+  ctx.fillStyle='rgba(0,160,190,0.45)';
+  ctx.font='8px monospace';
+  ctx.fillText(_COORDS,cx,cy-R-7);
 
-  // HUD labels
-  ctx.fillStyle='rgba(0,200,255,0.5)';ctx.font='9px Orbitron,monospace';
-  ctx.fillText('__CITY__',cx-20,cy-R-14);
-  ctx.fillStyle='rgba(0,160,190,0.4)';ctx.font='8px monospace';
-  ctx.fillText('__COORDS__',cx-24,cy-R-4);
-
-  t++;requestAnimationFrame(drawFrame);
+  t++;requestAnimationFrame(draw);
 }
-drawFrame();
+draw();
 </script></body></html>"""
-        # Inject Python variables safely
-        globe_html = (globe_html
-            .replace("__LAT__", str(lat))
-            .replace("__LON__", str(lon))
-            .replace("__CITY__", f"◈ {city_name.upper()}")
-            .replace("__COORDS__", f"{lat:.2f}°N {lon:.2f}°E")
-            .replace("__TLAT__", str(lat))
-            .replace("__TLON__", str(lon))
-            .replace("__ZA__", str(lat+0.12))
-            .replace("__ZB__", str(lon-0.09))
-            .replace("__ZC__", str(lat-0.08))
-            .replace("__ZD__", str(lon+0.18))
-            .replace("__ZE__", str(lat+0.20))
-            .replace("__ZF__", str(lon+0.10))
-            .replace("__ZG__", str(lat-0.16))
-            .replace("__ZH__", str(lon-0.12))
-            .replace("__ZI__", str(lat+0.06))
-            .replace("__ZJ__", str(lon-0.22))
-            .replace("__ZK__", str(lat-0.05))
-            .replace("__ZL__", str(lon+0.26))
-        )
+
         st.markdown('<div class="card cp" style="padding:1rem 1.4rem"><div class="ct">PLANETARY OVERVIEW</div>', unsafe_allow_html=True)
         import streamlit.components.v1 as components
-        components.html(globe_html, height=390, scrolling=False)
+        components.html(globe_html, height=430, scrolling=False)
         st.markdown(f"""
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid rgba(0,200,255,0.06)">
   <div><div class="dv-l">TEMPERATURE</div><div style="font-family:Orbitron,sans-serif;font-size:1.3rem;font-weight:700;color:#fff">{cur['temperature_2m']:.1f}<span style="font-size:0.7rem;color:#00c8ff">°C</span></div></div>
@@ -994,6 +1019,215 @@ drawFrame();
   <div style="font-size:0.72rem;color:rgba(180,230,245,0.6);line-height:1.4">{msg[:90]}{"…" if len(msg)>90 else ""}</div>
 </div>""", unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
+
+    # ── ROW 3: 2D Agricultural Zone Intelligence Map ──
+    st.markdown("""<div style="height:1px;background:rgba(0,200,255,0.06);margin:0"></div>""", unsafe_allow_html=True)
+
+    map_col1, map_col2 = st.columns([2, 1])
+
+    with map_col1:
+        layer_options = [
+            "🌱 Crop Suitability",
+            "💧 Water Availability",
+            "🌡 Temperature Zones",
+            "🌊 Flood Risk",
+            "🏜 Drought Probability",
+            "🟢 Vegetation Index",
+            "🦗 Pest Pressure",
+            "🌍 Soil Health",
+        ]
+        layer_colors = {
+            "🌱 Crop Suitability":   ["#22d4a0","#7ee8a2","#dca014","#e07832","#ff2846"],
+            "💧 Water Availability": ["#00c8ff","#22d4a0","#dca014","#e07832","#ff2846"],
+            "🌡 Temperature Zones":  ["#ff2846","#e07832","#dca014","#22d4a0","#00c8ff"],
+            "🌊 Flood Risk":         ["#0040ff","#0088ff","#00c8ff","#dca014","#22d4a0"],
+            "🏜 Drought Probability":["#ff2846","#e07832","#dca014","#22d4a0","#00c8ff"],
+            "🟢 Vegetation Index":   ["#22d4a0","#7ee8a2","#a0c840","#886600","#442200"],
+            "🦗 Pest Pressure":      ["#ff2846","#e07832","#dca014","#22d4a0","#00c8ff"],
+            "🌍 Soil Health":        ["#22d4a0","#7ee8a2","#a09040","#886620","#442210"],
+        }
+
+        sel_layer = st.selectbox(
+            "◈ INTELLIGENCE LAYER",
+            layer_options,
+            key="map_layer_sel",
+            label_visibility="visible"
+        )
+        lc = layer_colors.get(sel_layer, layer_colors["🌱 Crop Suitability"])
+
+        # Build map html with Python vars safely concatenated
+        _mlat = str(lat)
+        _mlon = str(lon)
+        _mcity = city_name.upper()
+        _mza = str(round(lat+0.13,4)); _mzb = str(round(lon-0.09,4))
+        _mzc = str(round(lat-0.07,4)); _mzd = str(round(lon+0.17,4))
+        _mze = str(round(lat+0.21,4)); _mzf = str(round(lon+0.11,4))
+        _mzg = str(round(lat-0.17,4)); _mzh = str(round(lon-0.13,4))
+        _mzi = str(round(lat+0.06,4)); _mzj = str(round(lon-0.23,4))
+        _mzk = str(round(lat-0.06,4)); _mzl = str(round(lon+0.27,4))
+        _mzm = str(round(lat+0.28,4)); _mzn = str(round(lon+0.03,4))
+        _mzo = str(round(lat-0.24,4)); _mzp = str(round(lon-0.02,4))
+
+        map_html = (
+            "<!DOCTYPE html><html><head><meta charset='utf-8'/>"
+            "<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'/>"
+            "<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>"
+            "<style>"
+            "*{margin:0;padding:0;box-sizing:border-box}"
+            "body{background:#040d12;font-family:Orbitron,monospace}"
+            "#map{width:100%;height:320px}"
+            ".leaflet-container{background:#020a10!important}"
+            ".leaflet-tile{filter:brightness(0.22) saturate(0.15) hue-rotate(160deg) contrast(1.1)!important}"
+            ".leaflet-popup-content-wrapper{background:rgba(0,12,22,0.97);border:1px solid rgba(0,200,255,0.3);color:#00c8ff;border-radius:4px;box-shadow:0 0 20px rgba(0,200,255,0.15)}"
+            ".leaflet-popup-tip{background:rgba(0,12,22,0.97)}"
+            ".leaflet-popup-content{font-family:Orbitron,monospace;font-size:10px;letter-spacing:1px}"
+            ".leaflet-control-zoom a{background:rgba(0,12,22,0.9)!important;border-color:rgba(0,200,255,0.2)!important;color:#00c8ff!important}"
+            ".scan-line{position:absolute;left:0;right:0;height:1px;pointer-events:none;z-index:1000;"
+            "background:linear-gradient(90deg,transparent,rgba(0,200,255,0.4),rgba(34,212,160,0.3),transparent);"
+            "animation:scan 5s linear infinite}"
+            "@keyframes scan{0%{top:0%}100%{top:100%}}"
+            ".hud-tl{position:absolute;top:10px;left:10px;z-index:1000;pointer-events:none}"
+            ".hud-tr{position:absolute;top:10px;right:10px;z-index:1000;pointer-events:none;text-align:right}"
+            ".hud-bl{position:absolute;bottom:10px;left:10px;z-index:1000;pointer-events:none}"
+            ".badge{display:inline-block;background:rgba(0,8,18,0.93);border:1px solid rgba(0,200,255,0.28);"
+            "border-radius:3px;padding:4px 10px;font-size:9px;color:#00c8ff;letter-spacing:2px;margin-bottom:4px}"
+            ".badge.g{border-color:rgba(34,212,160,0.35);color:#22d4a0}"
+            ".badge.w{border-color:rgba(220,160,20,0.35);color:#dca014}"
+            ".legend{background:rgba(0,8,18,0.93);border:1px solid rgba(0,200,255,0.18);border-radius:4px;padding:8px 10px;display:inline-block}"
+            ".leg-t{font-size:7px;color:rgba(0,160,190,0.7);letter-spacing:2px;margin-bottom:6px}"
+            ".leg-r{display:flex;align-items:center;gap:6px;margin-bottom:3px}"
+            ".leg-d{width:10px;height:10px;border-radius:2px;flex-shrink:0}"
+            ".leg-l{font-size:8px;color:#9ef0e8}"
+            "</style></head><body>"
+            "<div id='map' style='position:relative'>"
+            "<div class='scan-line'></div>"
+            "<div class='hud-tl'>"
+            "<div class='badge'>◈ AEROVEDA ZONE INTELLIGENCE</div><br>"
+            "<div class='badge'>" + _mcity + "</div><br>"
+            "<div class='badge'>" + str(round(lat,3)) + "°N " + str(round(lon,3)) + "°E</div>"
+            "</div>"
+            "<div class='hud-tr'>"
+            "<div class='badge g'>ENV: " + str(es) + "/100</div><br>"
+            "<div class='badge " + ("w" if has_crisis or has_warning else "g") + "'>"
+            + ("⚠ ALERTS" if has_crisis or has_warning else "✓ NOMINAL") + "</div>"
+            "</div>"
+            "<div class='hud-bl'>"
+            "<div class='legend'>"
+            "<div class='leg-t'>ZONE CLASSIFICATION</div>"
+            "<div class='leg-r'><div class='leg-d' style='background:" + lc[0] + "'></div><div class='leg-l'>OPTIMAL</div></div>"
+            "<div class='leg-r'><div class='leg-d' style='background:" + lc[1] + "'></div><div class='leg-l'>GOOD</div></div>"
+            "<div class='leg-r'><div class='leg-d' style='background:" + lc[2] + "'></div><div class='leg-l'>MODERATE</div></div>"
+            "<div class='leg-r'><div class='leg-d' style='background:" + lc[3] + "'></div><div class='leg-l'>STRESSED</div></div>"
+            "<div class='leg-r'><div class='leg-d' style='background:" + lc[4] + "'></div><div class='leg-l'>CRITICAL</div></div>"
+            "</div></div></div>"
+            "<script>"
+            "var map=L.map('map',{zoomControl:false,attributionControl:false}).setView(["
+            + _mlat + "," + _mlon + "],10);"
+            "L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:16}).addTo(map);"
+            "L.control.zoom({position:'bottomright'}).addTo(map);"
+            # Zone circles
+            "var zc=['" + lc[0] + "','" + lc[1] + "','" + lc[2] + "','" + lc[3] + "','" + lc[4] + "'];"
+            "var zones=["
+            "[" + _mza + "," + _mzb + ",0,0.20,'ZONE-A · OPTIMAL'],"
+            "[" + _mzc + "," + _mzd + ",1,0.16,'ZONE-B · GOOD'],"
+            "[" + _mze + "," + _mzf + ",2,0.14,'ZONE-C · MODERATE'],"
+            "[" + _mzg + "," + _mzh + ",1,0.18,'ZONE-D · GOOD'],"
+            "[" + _mzi + "," + _mzj + ",3,0.12,'ZONE-E · STRESSED'],"
+            "[" + _mzk + "," + _mzl + ",0,0.15,'ZONE-F · OPTIMAL'],"
+            "[" + _mzm + "," + _mzn + ",4,0.10,'ZONE-G · CRITICAL'],"
+            "[" + _mzo + "," + _mzp + ",2,0.13,'ZONE-H · MODERATE']"
+            "];"
+            "zones.forEach(function(z){"
+            "var c=L.circle([z[0],z[1]],{"
+            "color:zc[z[2]],fillColor:zc[z[2]],fillOpacity:0.18,"
+            "weight:1.5,opacity:0.75,radius:z[3]*111000"
+            "}).addTo(map);"
+            "c.bindPopup('<span style=\"font-family:Orbitron,monospace;font-size:10px;letter-spacing:1px\">◈ '+z[4]+'</span>');"
+            "});"
+            # Grid lines
+            "for(var i=-5;i<=5;i++){"
+            "L.polyline([[" + _mlat + "+i*0.06," + _mlon + "-0.7],["
+            + _mlat + "+i*0.06," + _mlon + "+0.7]],"
+            "{color:'rgba(0,200,255,0.04)',weight:0.5}).addTo(map);"
+            "L.polyline([[" + _mlat + "-0.4," + _mlon + "+i*0.09],["
+            + _mlat + "+0.4," + _mlon + "+i*0.09]],"
+            "{color:'rgba(0,200,255,0.04)',weight:0.5}).addTo(map);"
+            "}"
+            # Center marker
+            "var icon=L.divIcon({"
+            "html:'<div style=\"width:14px;height:14px;border-radius:50%;"
+            "background:#00c8ff;border:2px solid #fff;"
+            "box-shadow:0 0 12px #00c8ff,0 0 24px rgba(0,200,255,0.5)\">',"
+            "iconSize:[14,14],iconAnchor:[7,7]});"
+            "L.marker([" + _mlat + "," + _mlon + "],{icon:icon}).addTo(map)"
+            ".bindPopup('<span style=\"font-family:Orbitron,monospace;font-size:10px;color:#00c8ff;letter-spacing:1px\">◈ " + _mcity + "<br><span style=\"color:#22d4a0\">"
+            + str(round(lat,3)) + "°N, " + str(round(lon,3)) + "°E</span></span>');"
+            "</script></body></html>"
+        )
+
+        st.markdown('<div class="card" style="padding:0;overflow:hidden"><div style="padding:0.9rem 1.2rem 0.4rem;border-bottom:1px solid rgba(0,200,255,0.06)"><span class="ct" style="font-size:0.56rem;color:rgba(0,160,190,0.7);font-family:Orbitron,sans-serif;font-weight:700;letter-spacing:0.18em">◈ AGRICULTURAL ZONE INTELLIGENCE MAP</span></div>', unsafe_allow_html=True)
+        components.html(map_html, height=330, scrolling=False)
+        st.markdown(f"""
+<div style="display:flex;gap:8px;flex-wrap:wrap;padding:0.7rem 1.2rem;border-top:1px solid rgba(0,200,255,0.06)">
+  <span class="tag tg">OPTIMAL 38%</span>
+  <span class="tag te">GOOD 27%</span>
+  <span class="tag tw">MODERATE 21%</span>
+  <span style="display:inline-block;padding:2px 8px;border-radius:3px;font-family:Share Tech Mono,monospace;font-size:0.53rem;letter-spacing:0.08em;font-weight:700;background:rgba(255,40,70,0.1);border:1px solid rgba(255,40,70,0.22);color:#ff2846">STRESSED 14%</span>
+</div></div>""", unsafe_allow_html=True)
+
+    with map_col2:
+        # Zone info panel
+        pm25_v = float(aq_cur.get("pm2_5",0) or 0)
+        eu_v = int(aq_cur.get("european_aqi",0) or 0)
+        st.markdown(f"""
+<div class="card cp" style="height:100%">
+  <div class="ct">ZONE ANALYSIS</div>
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(0,200,255,0.06)">
+    <span style="font-family:Share Tech Mono,monospace;font-size:0.57rem;color:rgba(0,140,180,0.6);text-transform:uppercase">Soil Quality</span>
+    <span style="font-family:Orbitron,sans-serif;font-size:0.8rem;font-weight:700;color:#22d4a0">{min(99,ws+8)}%</span>
+  </div>
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(0,200,255,0.06)">
+    <span style="font-family:Share Tech Mono,monospace;font-size:0.57rem;color:rgba(0,140,180,0.6);text-transform:uppercase">Water Access</span>
+    <span style="font-family:Orbitron,sans-serif;font-size:0.8rem;font-weight:700;color:#00c8ff">{max(55,100-int(pm25_v*0.9))}%</span>
+  </div>
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(0,200,255,0.06)">
+    <span style="font-family:Share Tech Mono,monospace;font-size:0.57rem;color:rgba(0,140,180,0.6);text-transform:uppercase">Climate Fit</span>
+    <span style="font-family:Orbitron,sans-serif;font-size:0.8rem;font-weight:700;color:{ec}">{ws}%</span>
+  </div>
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(0,200,255,0.06)">
+    <span style="font-family:Share Tech Mono,monospace;font-size:0.57rem;color:rgba(0,140,180,0.6);text-transform:uppercase">Biodiversity</span>
+    <span style="font-family:Orbitron,sans-serif;font-size:0.8rem;font-weight:700;color:#7ee8a2">{min(99,es+5)}%</span>
+  </div>
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(0,200,255,0.06)">
+    <span style="font-family:Share Tech Mono,monospace;font-size:0.57rem;color:rgba(0,140,180,0.6);text-transform:uppercase">Air Quality</span>
+    <span style="font-family:Orbitron,sans-serif;font-size:0.8rem;font-weight:700;color:{bcol(eu_v,20,60)}">{eu_v if eu_v else 'N/A'}</span>
+  </div>
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0">
+    <span style="font-family:Share Tech Mono,monospace;font-size:0.57rem;color:rgba(0,140,180,0.6);text-transform:uppercase">AG Potential</span>
+    <span style="font-family:Orbitron,sans-serif;font-size:0.8rem;font-weight:700;color:#22d4a0">{ag}%</span>
+  </div>
+
+  <div style="margin-top:1rem;padding-top:0.8rem;border-top:1px solid rgba(0,200,255,0.06)">
+    <div style="font-family:Share Tech Mono,monospace;font-size:0.55rem;color:rgba(0,140,180,0.5);margin-bottom:6px;text-transform:uppercase">Zone Info</div>
+    <div style="font-family:Orbitron,sans-serif;font-size:0.62rem;color:#00c8ff;margin-bottom:3px">ID: ZN-{abs(int(lat*100))%9000+1000}</div>
+    <div style="font-family:Share Tech Mono,monospace;font-size:0.6rem;color:rgba(0,160,190,0.55);line-height:1.8">
+      ELEV: ~{abs(int(lat*8))%600+50}m<br>
+      AREA: ~{abs(int(lon*3))%800+200} km²<br>
+      SOIL: {'Loamy Clay' if lat>15 else 'Sandy Loam'}<br>
+      pH: {5.8+round((ws%30)/30,1):.1f}<br>
+      RAINFALL: {total_rain:.0f}mm/7d
+    </div>
+  </div>
+
+  <div style="margin-top:1rem;padding-top:0.8rem;border-top:1px solid rgba(0,200,255,0.06)">
+    <div style="font-family:Share Tech Mono,monospace;font-size:0.55rem;color:rgba(0,140,180,0.5);margin-bottom:6px;text-transform:uppercase">Risk Factors</div>
+    {''.join([
+      f'<div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-family:Share Tech Mono,monospace;font-size:0.58rem;color:rgba(0,140,180,0.5)">• Drought</span><span style="font-family:Orbitron,sans-serif;font-size:0.6rem;color:' + ("#ff2846" if total_rain<5 else "#dca014" if total_rain<20 else "#22d4a0") + '">' + ("HIGH" if total_rain<5 else "LOW" if total_rain>30 else "MED") + '</span></div>',
+      f'<div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-family:Share Tech Mono,monospace;font-size:0.58rem;color:rgba(0,140,180,0.5)">• Flood</span><span style="font-family:Orbitron,sans-serif;font-size:0.6rem;color:' + ("#ff2846" if total_rain>100 else "#dca014" if total_rain>50 else "#22d4a0") + '">' + ("HIGH" if total_rain>100 else "MED" if total_rain>50 else "LOW") + '</span></div>',
+      f'<div style="display:flex;justify-content:space-between"><span style="font-family:Share Tech Mono,monospace;font-size:0.58rem;color:rgba(0,140,180,0.5)">• Pest</span><span style="font-family:Orbitron,sans-serif;font-size:0.6rem;color:' + ("#dca014" if cur["relative_humidity_2m"]>70 else "#22d4a0") + '">' + ("MED" if cur["relative_humidity_2m"]>70 else "LOW") + '</span></div>',
+    ])}
+  </div>
+</div>""", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════
 # TAB 1 — ENVIRONMENT
