@@ -670,7 +670,7 @@ with tabs[0]:
 <script>
 var c=document.getElementById('c'),ctx=c.getContext('2d');
 var W=520,H=380,cx=W/2,cy=H/2+10,R=Math.min(W,H)*0.4,t=0,speed=0.004;
-var tlat={lat}*Math.PI/180,tlon={lon}*Math.PI/180;
+var tlat=__LAT__*Math.PI/180,tlon=__LON__*Math.PI/180;
 var rotY=Math.PI-tlon,rotX=-tlat*0.45;
 
 // Stars
@@ -824,12 +824,12 @@ function drawFrame(){
 
   // ── AGRICULTURAL ZONES (holographic overlay) ──
   var zones=[
-    [{lat+0.12},{lon-0.09},0],
-    [{lat-0.08},{lon+0.18},1],
-    [{lat+0.20},{lon+0.10},2],
-    [{lat-0.16},{lon-0.12},1],
-    [{lat+0.06},{lon-0.22},3],
-    [{lat-0.05},{lon+0.26},0],
+    [__ZA__,__ZB__,0],
+    [__ZC__,__ZD__,1],
+    [__ZE__,__ZF__,2],
+    [__ZG__,__ZH__,1],
+    [__ZI__,__ZJ__,3],
+    [__ZK__,__ZL__,0],
   ];
   var zc=['#00c8ff','#22d4a0','#dca014','#e07832','#ff2846'];
   zones.forEach(function(z){
@@ -870,7 +870,7 @@ function drawFrame(){
   ctx.restore();
 
   // ── TARGET LOCATION ──
-  var tp=ll3d({lat},{lon},R*1.012),tr=rot3(tp[0],tp[1],tp[2],cr,rotX);
+  var tp=ll3d(__LAT__,__LON__,R*1.012),tr=rot3(tp[0],tp[1],tp[2],cr,rotX);
   if(vis(tr[2])){
     var tpr=proj(tr[0],tr[1],tr[2]);
     // Pulsing rings
