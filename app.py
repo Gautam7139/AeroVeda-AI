@@ -662,8 +662,9 @@ with tabs[0]:
 
     # ── Globe (realistic Earth) ──
     with r1[0]:
-        globe_html = f"""<!DOCTYPE html><html><head><meta charset="utf-8"/>
-<style>*{{margin:0;padding:0;box-sizing:border-box}}body{{background:#040d12;overflow:hidden}}canvas{{display:block;width:100%;height:380px}}</style>
+        # Build globe HTML — use .replace() to inject Python vars safely, avoid f-string JS brace conflicts
+        globe_html = """<!DOCTYPE html><html><head><meta charset="utf-8"/>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#040d12;overflow:hidden}canvas{display:block;width:100%;height:380px}</style>
 </head><body>
 <canvas id="c" width="520" height="380"></canvas>
 <script>
