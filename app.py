@@ -114,64 +114,321 @@ WMO={0:"Clear Sky",1:"Mainly Clear",2:"Partly Cloudy",3:"Overcast",45:"Fog",
      95:"Thunderstorm",96:"Thunderstorm+Hail"}
 def wdesc(c): return WMO.get(c,"Unknown")
 
-def detect_crises(w, aq_cur, lat):
+def get_season_context(lat, lon, month):
+    """Returns (season_name, season_description, is_dry_season_normal)
+    Accounts for hemisphere + monsoon/dry-season cycles. The Asian monsoon
+    belt (South/SE/East Asia) extends well north of the geometric tropics —
+    Delhi at 28.6°N still follows Kharif/Rabi, not a 4-season temperate calendar —
+    so we widen the monsoon classification using longitude as well as latitude."""
+    abs_lat = abs(lat)
+    is_southern = lat < 0
+    in_asian_monsoon_belt = (55 <= lon <= 150) and (-10 <= lat <= 35)
+    is_monsoon_climate = abs_lat < 23.5 or in_asian_monsoon_belt
+
+    if is_monsoon_climate:
+        # Monsoon-influenced belt — governed by wet/dry cycle, not 4 seasons
+        if month in (6,7,8,9):
+            return ("Monsoon / Wet Season",
+                    "Active monsoon rains — the Kharif sowing window across South and East Asia",
+                    False)
+        elif month in (10,11):
+            return ("Post-Monsoon Transition",
+                    "Monsoon withdrawing; residual soil moisture supports Rabi/winter-crop sowing",
+                    False)
+        elif month in (12,1,2):
+            return ("Cool Dry Season",
+                    "Cooler and largely dry — Rabi crops grow on residual moisture plus irrigation",
+                    True)
+        else:  # 3,4,5
+            return ("Hot Dry Season (Pre-Monsoon)",
+                    "Hottest, driest part of the year before monsoon onset — high evaporation, irrigation-dependent",
+                    True)
+    else:
+        # Temperate — shift month by 6 for southern hemisphere
+        eff = ((month - 1 + 6) % 12 + 1) if is_southern else month
+        if eff in (12,1,2):
+            return ("Winter",
+                    "Cold season — most crops dormant; only frost-hardy crops are viable outdoors",
+                    True)
+        elif eff in (3,4,5):
+            return ("Spring",
+                    "Mild and lengthening days — the main window for sowing both cool- and warm-season crops",
+                    False)
+        elif eff in (6,7,8):
+            return ("Summer",
+                    "Peak heat — cool-season crops (spinach, lettuce, peas) bolt and fail; warm-season crops thrive. Dry spells are common and not unusual.",
+                    True)
+        else:  # 9,10,11
+            return ("Autumn / Fall",
+                    "Cooling temperatures — good for harvesting summer crops and sowing cool-season crops",
+                    False)
+
+def detect_crises(w, aq_cur, lat, lon, month):
+    """Season-aware crisis detection. Returns list of (level, title, msg, metric_pct)
+    where metric_pct (0-100) drives the severity bar in the UI."""
     alerts=[]; daily=w["daily"]; cur=w["current"]
-    month=datetime.now().month; is_tropical=abs(lat)<25
-    is_monsoon=is_tropical and month in [6,7,8,9,10]
+    season_name, season_desc, dry_normal = get_season_context(lat, lon, month)
+    is_monsoon = season_name == "Monsoon / Wet Season"
+
     pl=[p for p in daily["precipitation_sum"] if p is not None]
     total_7d=sum(pl); max_day=max(pl) if pl else 0
     max_temps=[t for t in daily["temperature_2m_max"] if t]
     min_temps=[t for t in daily["temperature_2m_min"] if t]
     max_wind=max((v for v in daily["wind_speed_10m_max"] if v),default=0)
     hum=cur.get("relative_humidity_2m",0)
+
+    # ── Air Quality ──
     if aq_cur:
         aqi=aq_cur.get("european_aqi") or aq_cur.get("us_aqi")
-        if aqi and aqi>100: alerts.append(("crisis","AIR QUALITY HAZARD",f"AQI {aqi} — Extremely hazardous. Halt outdoor farming operations."))
-        elif aqi and aqi>80: alerts.append(("crisis","SEVERE POLLUTION",f"AQI {aqi} — Severe pollution. Sensitive crops under critical stress."))
-        elif aqi and aqi>50: alerts.append(("warning","POOR AIR QUALITY",f"AQI {aqi} — Elevated pollution reducing crop productivity."))
+        if aqi and aqi>100:
+            alerts.append(("crisis","AIR QUALITY HAZARD",f"AQI {aqi} — extremely hazardous. Halt outdoor farm work and avoid foliar spraying until air clears.",min(100,aqi)))
+        elif aqi and aqi>80:
+            alerts.append(("crisis","SEVERE AIR POLLUTION",f"AQI {aqi} — severe pollution. Sensitive crops (leafy greens, fruiting vegetables) show measurable yield stress at this level.",min(100,aqi)))
+        elif aqi and aqi>50:
+            alerts.append(("warning","ELEVATED AIR POLLUTION",f"AQI {aqi} — moderate pollution can reduce photosynthetic efficiency over time. No immediate action needed.",min(100,int(aqi*0.9))))
+
+    # ── Flood / heavy rain (factual — heavy rain is heavy rain in any season) ──
     if max_day>80 or total_7d>200:
-        alerts.append(("crisis","FLASH FLOOD RISK",f"Extreme rainfall: {max_day:.0f}mm peak, {total_7d:.0f}mm/7d. Waterlogging imminent."))
+        alerts.append(("crisis","FLASH FLOOD RISK",f"Extreme rainfall — {max_day:.0f}mm in a single day, {total_7d:.0f}mm over 7 days. Waterlogging and field flooding likely; check drainage and avoid low-lying plots.",100))
     elif max_day>40 or total_7d>120:
-        alerts.append(("crisis","FLOOD PROBABILITY HIGH",f"{total_7d:.0f}mm weekly. Clear drainage channels immediately."))
+        alerts.append(("crisis","HIGH FLOOD PROBABILITY",f"{total_7d:.0f}mm forecast over 7 days with a {max_day:.0f}mm peak day. Clear drainage channels now and delay any fresh sowing in low areas.",min(100,int(total_7d/2))))
     elif total_7d>60:
-        alerts.append(("warning","HEAVY RAINFALL",f"{total_7d:.0f}mm forecast. Reduce irrigation, monitor drainage."))
-    if is_monsoon and hum>85 and total_7d>30:
-        alerts.append(("warning","MONSOON DISEASE RISK",f"Active monsoon: {hum}% RH. High fungal pressure. Apply preventive fungicide."))
+        alerts.append(("warning","HEAVY RAINFALL EXPECTED",f"{total_7d:.0f}mm forecast over 7 days. Reduce or pause irrigation and watch for waterlogging in heavier soils.",min(100,int(total_7d*0.8))))
+
+    # ── Monsoon disease pressure ──
+    if is_monsoon and hum>=85 and total_7d>30:
+        alerts.append(("warning","FUNGAL DISEASE RISK (MONSOON)",f"{hum}% humidity with {total_7d:.0f}mm rain creates high pressure for blast, blight and leaf-spot diseases. Inspect crops every 2-3 days and have fungicide ready as a preventive, not just curative, measure.",min(100,hum)))
+
+    # ── Dry conditions — now season-aware ──
     if total_7d<2 and cur.get("precipitation",0)<0.5:
         avg_max=sum(max_temps)/len(max_temps) if max_temps else 30
-        if avg_max>28: alerts.append(("crisis","DROUGHT CONDITIONS",f"Near-zero rain ({total_7d:.1f}mm/7d), {avg_max:.1f}°C avg. Emergency irrigation required."))
-        elif avg_max>18: alerts.append(("warning","LOW RAINFALL",f"Only {total_7d:.1f}mm forecast. Monitor soil moisture."))
+        if dry_normal:
+            if avg_max>30:
+                alerts.append(("warning","SEASONAL DRY HEAT",f"{total_7d:.1f}mm rain with a {avg_max:.1f}°C average is common for {season_name.lower()} here — not an emergency, but any active crops will depend entirely on irrigation until conditions change.",min(100,int(avg_max*1.6))))
+            else:
+                alerts.append(("safe","SEASONAL DRY CONDITIONS",f"{total_7d:.1f}mm rain over 7 days is unremarkable for {season_name.lower()}. Irrigation-dependent crops only — no cause for concern.",30))
+        else:
+            if avg_max>28:
+                alerts.append(("crisis","DROUGHT CONDITIONS",f"Only {total_7d:.1f}mm rain over 7 days with a {avg_max:.1f}°C average is an unusually dry stretch for {season_name.lower()}, when more rainfall would normally be expected. Standing crops may need emergency irrigation.",min(100,int(avg_max*2))))
+            elif avg_max>18:
+                alerts.append(("warning","BELOW-NORMAL RAINFALL",f"{total_7d:.1f}mm is below what's typical for {season_name.lower()}. Monitor soil moisture and bring forward the next irrigation cycle.",min(100,int(avg_max*1.8))))
+
+    # ── Heat — season-aware framing ──
     ex_heat=sum(1 for t in max_temps if t>42)
     hi_heat=sum(1 for t in max_temps if t>38)
-    if ex_heat>=2: alerts.append(("crisis","EXTREME HEAT WAVE",f"{ex_heat} days >42°C. Increase irrigation 40–60%."))
-    elif hi_heat>=3: alerts.append(("warning","HEAT STRESS",f"{hi_heat} days >38°C. Shift irrigation to morning/evening."))
+    if ex_heat>=2:
+        alerts.append(("crisis","EXTREME HEAT WAVE",f"{ex_heat} day(s) forecast above 42°C — dangerous even for {season_name.lower()}. Increase irrigation 40-60%, mulch root zones, and use shade netting on sensitive crops.",min(100,int(ex_heat*35))))
+    elif hi_heat>=3:
+        if "summer" in season_name.lower() or "hot" in season_name.lower() or "monsoon" in season_name.lower():
+            alerts.append(("warning","SEASONAL HEAT STRESS",f"{hi_heat} day(s) above 38°C is expected for {season_name.lower()}, but still stresses crops. Irrigate early morning or evening to reduce evaporative loss.",min(100,int(hi_heat*18))))
+        else:
+            alerts.append(("warning","UNSEASONABLE HEAT",f"{hi_heat} day(s) above 38°C is unusual for {season_name.lower()}. Watch for early bolting in cool-season crops and heat stress in young transplants.",min(100,int(hi_heat*22))))
+
+    # ── Frost ──
     frost=sum(1 for t in min_temps if t<2)
-    if frost>=1: alerts.append(("crisis","FROST WARNING",f"{frost} night(s) sub-2°C. Cover sensitive crops."))
-    if max_wind>80: alerts.append(("crisis","STORM FORCE WINDS",f"Gusts to {max_wind:.0f}km/h. Secure infrastructure."))
-    elif max_wind>50: alerts.append(("warning","HIGH WIND",f"Winds to {max_wind:.0f}km/h. Avoid spraying."))
-    if not alerts: alerts.append(("safe","ALL SYSTEMS NOMINAL",f"No threats. {cur['temperature_2m']:.1f}°C, {hum}% RH, {total_7d:.0f}mm/7d. Conditions normal."))
+    if frost>=1:
+        alerts.append(("crisis","FROST RISK",f"{frost} night(s) forecast below 2°C. Cover or harvest frost-sensitive crops before nightfall; frost can cause irreversible damage to tender growth.",min(100,int(frost*40))))
+
+    # ── Wind ──
+    if max_wind>80:
+        alerts.append(("crisis","STORM-FORCE WINDS",f"Gusts up to {max_wind:.0f}km/h forecast. Secure stakes, nets and greenhouse covers; delay any spraying operations.",min(100,int(max_wind*0.9))))
+    elif max_wind>50:
+        alerts.append(("warning","HIGH WIND ADVISORY",f"Gusts up to {max_wind:.0f}km/h forecast — pesticide and fertiliser sprays will drift. Reschedule spraying to calmer periods.",min(100,int(max_wind*0.7))))
+
+    if not alerts:
+        alerts.append(("safe","ALL SYSTEMS NOMINAL",f"No significant threats detected. {cur['temperature_2m']:.1f}°C, {hum}% RH, {total_7d:.0f}mm rain over 7 days — conditions are stable for {season_name.lower()}.",10))
+
     return alerts
 
-def recommend_crops(w):
+@st.cache_data(ttl=1800, show_spinner=False)
+def ai_recommend_crops(city_name, region, country, lat, lon, month_name, season_name, season_desc, temp, humidity, rain_7d, aqi):
+    """AI-driven crop recommendations grounded in real season + regional farming practice.
+    Returns a list of dicts or None if the AI call/parse fails (caller should use fallback)."""
+    loc_str = f"{city_name}, {region+', ' if region else ''}{country}"
+    prompt = f"""LOCATION: {loc_str} ({lat:.2f}°{'N' if lat>=0 else 'S'}, {lon:.2f}°{'E' if lon>=0 else 'W'})
+CURRENT MONTH: {month_name}
+SEASON: {season_name} — {season_desc}
+CURRENT CONDITIONS: {temp:.1f}°C, {humidity}% relative humidity, {rain_7d:.0f}mm rainfall over the past 7 days
+AIR QUALITY INDEX (EU): {aqi if aqi is not None else 'N/A'}
+
+Recommend the 5 most realistic crops for an ordinary smallholder farmer to be planting or tending RIGHT NOW at this exact location, in this exact month and season.
+
+STRICT RULES — read carefully:
+1. SEASON-MATCH ONLY: never suggest a crop that is agronomically wrong for the current season at this location (e.g. do not suggest spinach/lettuce/peas during peak summer heat — they bolt and fail; do not suggest a Kharif/monsoon crop during a dry off-season).
+2. REGIONAL REALISM: base suggestions on what farmers actually grow in this specific region during this month — real local crop calendars (e.g. Kharif/Rabi/Zaid in South Asia, or temperate spring/summer/fall plantings elsewhere), not generic global crop lists.
+3. INFRASTRUCTURE HONESTY: for water-intensive crops (rice, sugarcane, etc.) explicitly state in "requirements" that they need assured irrigation/paddy infrastructure and are NOT realistic for a typical small rainfed plot unless that infrastructure exists — do not present them as a default easy choice.
+4. SUITABILITY SCORE must reflect fit for THIS location+season+conditions specifically — a crop that's only viable with major infrastructure investment should score lower (50-65), not 90+.
+5. Prefer crops realistic for smallholder plots; only suggest large-scale/commercial crops if you flag that clearly in "requirements".
+
+Return ONLY a raw JSON array, no markdown fences, no commentary, exactly this shape:
+[{{"emoji":"🌾","name":"CROP NAME","suitability":85,"reasoning":"one sentence on why this fits the CURRENT season and climate here","requirements":"one sentence on water/infrastructure/scale needs","care":"short cycle/care note"}}]"""
+
+    system = ("You are a senior agronomist specialising in regional crop calendars and smallholder farming realities. "
+              "Respond with ONLY a valid JSON array — no markdown code fences, no commentary, no text before or after the array.")
+
+    result = ask_groq(prompt, system=system, max_tokens=1300)
+
+    try:
+        cleaned = result.strip()
+        if "```" in cleaned:
+            parts = cleaned.split("```")
+            cleaned = parts[1] if len(parts) > 1 else parts[0]
+            if cleaned.lower().startswith("json"):
+                cleaned = cleaned[4:]
+        cleaned = cleaned.strip()
+        start = cleaned.find("[")
+        end = cleaned.rfind("]")
+        if start != -1 and end != -1:
+            cleaned = cleaned[start:end+1]
+        crops = json.loads(cleaned)
+        if isinstance(crops, list) and len(crops) >= 3:
+            valid = []
+            for c in crops[:5]:
+                if all(k in c for k in ("emoji","name","suitability","reasoning","care")):
+                    try:
+                        c["suitability"] = max(0, min(100, int(float(c["suitability"]))))
+                    except Exception:
+                        c["suitability"] = 60
+                    c.setdefault("requirements","")
+                    c["name"] = str(c["name"]).upper()
+                    valid.append(c)
+            if len(valid) >= 3:
+                return valid
+    except Exception:
+        pass
+    return None
+
+def recommend_crops_fallback(w, lat, lon, month):
+    """Season-aware rule-based fallback (used only if the AI call fails).
+    Returns list of dicts in the same shape as ai_recommend_crops."""
     c=w["current"]; t=c["temperature_2m"]; h=c["relative_humidity_2m"]
     pl=[p for p in w["daily"]["precipitation_sum"] if p is not None]
-    ar=sum(pl)/len(pl) if pl else 0; result=[]
-    if 20<=t<=38 and h>50:
-        result.append(("🌾","RICE",95,"Optimal temp-humidity matrix","High water · 3–4 month cycle"))
-        result.append(("🌿","SUGARCANE",88,"Heat-humidity match","Weekly irrigation · 10–12 months"))
-    if 18<=t<=35:
-        result.append(("🥜","GROUNDNUT",85,"Temperature envelope aligned","Sandy loam · dry finish required"))
-        result.append(("🌽","MAIZE",82,"Thermophilic conditions","Moderate water · high N · 90d"))
-    if t>=25 and h<70:
-        result.append(("🍅","TOMATO",78,"Warm-dry matrix ideal","Drip irrigation · blight monitoring"))
-        result.append(("🌶️","CHILLI",76,"Low humidity = low fungal risk","Potassium feed · drip preferred"))
-    if t<22:
-        result.append(("🥬","SPINACH",90,"Cool threshold optimal","Direct sow · 6–8 week harvest"))
-        result.append(("🥕","CARROT",84,"Root growth favoured","Deep loose bed · 70d cycle"))
-    if ar<3 and t>20:
-        result.append(("🌻","SUNFLOWER",88,"Drought-tolerant","Minimal input · 80–95d"))
-        result.append(("🫘","MOONG DAL",83,"Short-season legume","Sandy loam · 60–70d"))
-    result.sort(key=lambda x:-x[2]); return result[:5]
+    total_7d=sum(pl)
+
+    season_name, season_desc, dry_normal = get_season_context(lat, lon, month)
+    is_monsoon_climate = season_name in ("Monsoon / Wet Season","Post-Monsoon Transition","Cool Dry Season","Hot Dry Season (Pre-Monsoon)")
+    is_southern = lat < 0
+    eff_month = ((month - 1 + 6) % 12 + 1) if (is_southern and not is_monsoon_climate) else month
+
+    monsoon_active = season_name == "Monsoon / Wet Season"
+    rabi_season = season_name in ("Post-Monsoon Transition","Cool Dry Season")
+    tropical_hot_dry = season_name == "Hot Dry Season (Pre-Monsoon)"
+    cool_season_temperate = (not is_monsoon_climate) and eff_month in (9,10,11,2,3,4)
+    peak_summer_temperate = (not is_monsoon_climate) and eff_month in (6,7,8)
+    winter_temperate = (not is_monsoon_climate) and eff_month in (12,1)
+
+    cands = []
+
+    # RICE — only high suitability if monsoon is actually active
+    if monsoon_active and 20<=t<=38 and h>=55:
+        cands.append({"emoji":"🌾","name":"RICE","suitability":90,
+            "reasoning":f"Warm, humid monsoon conditions ({t:.0f}°C, {h}% RH) match the Kharif paddy transplanting window for {season_name.lower()}",
+            "requirements":"Needs flooded paddy fields with assured water and bunding — suited to irrigated or monsoon-fed plots, not a typical small rainfed garden",
+            "care":"High water demand · 3–4 month cycle · transplant ~21 days"})
+    elif (not is_monsoon_climate) and 20<=t<=32 and h>=55 and total_7d>15:
+        cands.append({"emoji":"🌾","name":"RICE","suitability":55,
+            "reasoning":"Temperature and humidity are workable for rice, but this isn't a traditional rice-growing region or season",
+            "requirements":"Only realistic with major irrigation investment and levelled paddy fields — high water and capital cost; most smallholders should avoid this",
+            "care":"High water demand · 3–4 month cycle"})
+
+    # MAIZE — broad warm-season crop
+    if 16<=t<=34 and not winter_temperate:
+        base = 88 if 18<=t<=30 else 70
+        if monsoon_active:
+            reasoning = f"Warm Kharif-season temperatures ({t:.0f}°C) with incoming rain suit maize sowing now"
+        elif peak_summer_temperate:
+            reasoning = f"Summer warmth ({t:.0f}°C) is within maize's prime growing range for {season_name.lower()}"
+        elif cool_season_temperate:
+            reasoning = f"Mild {season_name.lower()} conditions ({t:.0f}°C) suit an early maize planting"
+        else:
+            reasoning = f"Current temperature ({t:.0f}°C) sits within maize's broad tolerance range"
+        cands.append({"emoji":"🌽","name":"MAIZE","suitability":base,
+            "reasoning":reasoning,
+            "requirements":"Moderate water — rainfed viable with 400-600mm/season; supplemental irrigation improves yield",
+            "care":"High-N fertiliser · ~90-day cycle to harvest"})
+
+    # WHEAT — cool season / Rabi
+    if (rabi_season and 10<=t<=25) or (cool_season_temperate and 8<=t<=22) or (winter_temperate and t>=5):
+        cands.append({"emoji":"🌿","name":"WHEAT","suitability":85,
+            "reasoning":f"Cool {season_name.lower()} conditions ({t:.0f}°C) are exactly when wheat is sown in this climate",
+            "requirements":"Low-moderate water — typically 2-4 irrigations depending on rainfall",
+            "care":"~110-130 day cycle, harvested at start of hot/dry season"})
+
+    # LEAFY GREENS — season-gated: cool crops only when genuinely cool, otherwise heat-tolerant alternative
+    if t<=24 and not tropical_hot_dry and not peak_summer_temperate:
+        cands.append({"emoji":"🥬","name":"SPINACH","suitability":87,
+            "reasoning":f"Cool conditions ({t:.0f}°C) during {season_name.lower()} are ideal — spinach bolts and turns bitter above roughly 24°C",
+            "requirements":"Light, frequent irrigation on well-drained fertile soil",
+            "care":"Direct sow · ready in 6–8 weeks"})
+    else:
+        cands.append({"emoji":"🌿","name":"AMARANTH (LEAFY)","suitability":80,
+            "reasoning":f"At {t:.0f}°C during {season_name.lower()}, spinach/lettuce would bolt — heat-tolerant amaranth thrives in these conditions instead",
+            "requirements":"Moderate water — tolerates heat and short dry spells once established",
+            "care":"Direct sow · ready in 4–5 weeks"})
+
+    # GROUNDNUT — warm + workable rainfall
+    if 20<=t<=35 and (monsoon_active or (not is_monsoon_climate and not winter_temperate)):
+        cands.append({"emoji":"🥜","name":"GROUNDNUT","suitability":83,
+            "reasoning":f"Warm conditions ({t:.0f}°C) with {'monsoon rainfall' if monsoon_active else 'workable rainfall'} fit groundnut's growing window for {season_name.lower()}",
+            "requirements":"Well-drained sandy loam; needs a dry spell at maturity for pod harvest — avoid heavy clay or waterlogged plots",
+            "care":"~100-120 day cycle"})
+
+    # TOMATO — warm, not winter
+    if 18<=t<=32 and not winter_temperate:
+        if h<70:
+            reasoning=f"{t:.0f}°C with relatively low humidity ({h}%) suits tomato well and keeps blight pressure manageable"
+            suit=80
+        else:
+            reasoning=f"{t:.0f}°C suits tomato, but {h}% humidity raises blight/fungal risk — monitor closely"
+            suit=68
+        cands.append({"emoji":"🍅","name":"TOMATO","suitability":suit,
+            "reasoning":reasoning,
+            "requirements":"Consistent drip irrigation, staking, and regular disease monitoring",
+            "care":"~70-85 days to first harvest"})
+
+    # CHICKPEA — cool/dry, Rabi-style
+    if (rabi_season or cool_season_temperate) and 10<=t<=28 and total_7d<40:
+        cands.append({"emoji":"🫘","name":"CHICKPEA","suitability":81,
+            "reasoning":f"Cool, drying conditions ({t:.0f}°C, {total_7d:.0f}mm/7d) match chickpea's {season_name.lower()} growing pattern",
+            "requirements":"Minimal irrigation — largely grown on residual soil moisture",
+            "care":"~90-120 day cycle · avoid waterlogging"})
+
+    # MUNG BEAN — warm, short-season legume
+    if monsoon_active or (not is_monsoon_climate and 20<=t<=33):
+        cands.append({"emoji":"🫛","name":"MUNG BEAN (MOONG)","suitability":76,
+            "reasoning":f"Warm conditions ({t:.0f}°C) suit this fast-maturing legume — a good fit between main-season crops",
+            "requirements":"Light irrigation; fixes nitrogen and improves soil for the next crop",
+            "care":"~60-70 day cycle · low input"})
+
+    # SUNFLOWER — drought tolerant, dry conditions
+    if t>20 and (total_7d<15 or tropical_hot_dry or (is_monsoon_climate and not monsoon_active)):
+        cands.append({"emoji":"🌻","name":"SUNFLOWER","suitability":78,
+            "reasoning":f"Drought-tolerant profile suits the current dry conditions ({total_7d:.0f}mm/7d, {t:.0f}°C) typical of {season_name.lower()}",
+            "requirements":"Minimal irrigation — deep taproot accesses subsoil moisture",
+            "care":"~80-95 day cycle · low input"})
+
+    # ONION — mild conditions
+    if 12<=t<=28 and not peak_summer_temperate and not tropical_hot_dry:
+        cands.append({"emoji":"🧅","name":"ONION","suitability":75,
+            "reasoning":f"Mild {season_name.lower()} conditions ({t:.0f}°C) suit bulb development without excess heat stress",
+            "requirements":"Raised beds with good drainage; reduce irrigation as bulbs mature",
+            "care":"~100-150 day cycle depending on variety"})
+
+    # POTATO — cool
+    if 10<=t<=24 and (cool_season_temperate or rabi_season or winter_temperate):
+        cands.append({"emoji":"🥔","name":"POTATO","suitability":82,
+            "reasoning":f"Cool conditions ({t:.0f}°C) during {season_name.lower()} match potato's tuber-bulking requirements",
+            "requirements":"Hilling plus consistent moisture during tuber formation; avoid waterlogging",
+            "care":"~90-110 day cycle"})
+
+    if not cands:
+        cands.append({"emoji":"🌱","name":"COVER CROP / GREEN MANURE","suitability":60,
+            "reasoning":f"Current {season_name.lower()} conditions ({t:.0f}°C, {total_7d:.0f}mm/7d) are marginal for most cash crops right now",
+            "requirements":"Minimal — a legume cover crop builds soil fertility for the next favourable season",
+            "care":"Sow and incorporate before next planting window"})
+
+    cands.sort(key=lambda x:-x["suitability"])
+    return cands[:5]
 
 def make_ring(score, color, sz=120, sw=8):
     v=score if score is not None else 0
@@ -466,7 +723,8 @@ html,body,[class*="css"]{font-family:'Exo 2',sans-serif;background:#030b10!impor
   background:currentColor;box-shadow:0 0 8px currentColor,0 0 16px currentColor}
 
 /* ── ALERTS ── */
-.alert{display:flex;gap:12px;padding:0.9rem 1.2rem;border-radius:6px;margin-bottom:0.6rem;position:relative}
+.alert{display:flex;gap:12px;padding:0.9rem 1.2rem;border-radius:6px;margin-bottom:0.6rem;position:relative;flex-direction:column}
+.alert-top{display:flex;gap:12px;align-items:flex-start}
 .alert::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;border-radius:3px 0 0 3px}
 .a-crisis{background:rgba(255,40,80,0.06);border:1px solid rgba(255,40,80,0.2)}
 .a-crisis::before{background:linear-gradient(180deg,#ff2850,#cc0020)}
@@ -479,6 +737,38 @@ html,body,[class*="css"]{font-family:'Exo 2',sans-serif;background:#030b10!impor
 .a-crisis .a-title{color:#ff6878}.a-warning .a-title{color:#f5d060}.a-safe .a-title{color:#00f5c3}
 .a-msg{font-size:0.8rem;line-height:1.6}
 .a-crisis .a-msg{color:#ffb0bc}.a-warning .a-msg{color:#fdeaa0}.a-safe .a-msg{color:#9ef5d8}
+.a-sev-track{height:3px;background:rgba(255,255,255,0.06);border-radius:99px;margin-top:10px;overflow:hidden;width:100%}
+.a-sev-fill{height:3px;border-radius:99px}
+.a-crisis .a-sev-fill{background:linear-gradient(90deg,#ff2850,#ff6878)}
+.a-warning .a-sev-fill{background:linear-gradient(90deg,#c09a00,#f5d060)}
+.a-safe .a-sev-fill{background:linear-gradient(90deg,#00c8a0,#00f5c3)}
+
+/* ── SEASON BANNER ── */
+.season-banner{
+  display:flex;align-items:center;gap:1rem;
+  padding:0.9rem 1.3rem;margin-bottom:1.2rem;
+  background:linear-gradient(135deg,rgba(0,220,180,0.05),rgba(0,200,255,0.03));
+  border:1px solid rgba(0,220,180,0.12);border-radius:8px;
+  position:relative;overflow:hidden;
+}
+.season-banner::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(0,220,180,0.4),rgba(0,200,255,0.2),transparent)}
+.season-icon{font-size:1.8rem;flex-shrink:0}
+.season-name{font-family:'Orbitron',sans-serif;font-size:0.78rem;font-weight:700;color:#fff;letter-spacing:0.06em}
+.season-desc{font-size:0.74rem;color:rgba(0,200,180,0.7);margin-top:2px;line-height:1.5}
+
+/* ── CRISIS SUMMARY ROW ── */
+.crisis-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:rgba(0,220,180,0.05);margin-bottom:1.2rem}
+.cs-cell{background:linear-gradient(135deg,rgba(0,18,28,0.94),rgba(0,8,16,0.97));padding:1.1rem 1.3rem;text-align:center;position:relative;overflow:hidden}
+.cs-cell::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(0,220,180,0.35),transparent)}
+.cs-num{font-family:'Orbitron',sans-serif;font-size:2.2rem;font-weight:800;line-height:1}
+.cs-lbl{font-family:'Share Tech Mono',monospace;font-size:0.56rem;letter-spacing:0.18em;color:rgba(0,160,190,0.55);margin-top:5px;text-transform:uppercase}
+
+/* ── CROP META TAGS ── */
+.cc-meta{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.cc-tag{font-family:'Share Tech Mono',monospace;font-size:0.56rem;padding:2px 7px;border-radius:3px;
+  background:rgba(0,200,255,0.07);border:1px solid rgba(0,200,255,0.18);color:#00c8ff;letter-spacing:0.05em}
+.cc-tag.req{background:rgba(245,200,66,0.06);border-color:rgba(245,200,66,0.18);color:#f5d060}
 
 /* ── CROP CARDS ── */
 .cc{display:flex;align-items:center;gap:1.1rem;padding:0.9rem 1.3rem;
@@ -621,10 +911,27 @@ now = datetime.now()
 total_rain = sum(p for p in daily["precipitation_sum"] if p)
 ec, eg = grade(es)
 
+# Season context — drives both crisis detection and crop recommendations
+season_name, season_desc, dry_normal = get_season_context(lat, lon, now.month)
+
 # Compute crisis list once here so it's available everywhere
-crisis_data = detect_crises(weather, aq_cur, lat)
+crisis_data = detect_crises(weather, aq_cur, lat, lon, now.month)
 has_crisis = any(c[0]=="crisis" for c in crisis_data)
 has_warning = any(c[0]=="warning" for c in crisis_data)
+crisis_count = sum(1 for c in crisis_data if c[0]=="crisis")
+warning_count = sum(1 for c in crisis_data if c[0]=="warning")
+
+# Crop recommendations — AI-driven with season-aware fallback (cached 30min)
+_ai_crops = ai_recommend_crops(city_name, region, country, lat, lon,
+                                now.strftime('%B'), season_name, season_desc,
+                                cur['temperature_2m'], cur['relative_humidity_2m'],
+                                total_rain, aq_cur.get('european_aqi'))
+if _ai_crops:
+    crop_list = _ai_crops
+    crops_are_ai = True
+else:
+    crop_list = recommend_crops_fallback(weather, lat, lon, now.month)
+    crops_are_ai = False
 
 # ── TOP BAR (logo + location only, no dummy buttons) ──────────────────────────
 st.markdown(f"""
@@ -1031,23 +1338,69 @@ with tabs[1]:
 # ══════════════════════════════════════════
 with tabs[2]:
     st.markdown('<div style="padding:1.5rem 2rem">', unsafe_allow_html=True)
+
+    season_icons = {
+        "Monsoon / Wet Season":"🌧","Post-Monsoon Transition":"🌦",
+        "Cool Dry Season":"🌤","Hot Dry Season (Pre-Monsoon)":"☀️",
+        "Winter":"❄️","Spring":"🌱","Summer":"☀️","Autumn / Fall":"🍂"
+    }
+    st.markdown(f"""<div class="season-banner">
+  <div class="season-icon">{season_icons.get(season_name,'🌍')}</div>
+  <div>
+    <div class="season-name">{season_name.upper()} · {now.strftime('%B %Y')}</div>
+    <div class="season-desc">{season_desc}</div>
+  </div>
+</div>""", unsafe_allow_html=True)
+
+    # Summary stat row
+    crisis_col = "#ff3a5c" if crisis_count>0 else "rgba(0,220,180,0.25)"
+    warn_col = "#f5c842" if warning_count>0 else "rgba(0,220,180,0.25)"
+    safe_n = sum(1 for c in crisis_data if c[0]=="safe")
+    safe_col = "#00f5c3" if (crisis_count==0 and warning_count==0) else "rgba(0,220,180,0.25)"
+    st.markdown(f"""<div class="crisis-summary">
+  <div class="cs-cell"><div class="cs-num" style="color:{crisis_col}">{crisis_count}</div><div class="cs-lbl">Active Crises</div></div>
+  <div class="cs-cell"><div class="cs-num" style="color:{warn_col}">{warning_count}</div><div class="cs-lbl">Advisories</div></div>
+  <div class="cs-cell"><div class="cs-num" style="color:{safe_col}">{'✓' if crisis_count==0 and warning_count==0 else safe_n}</div><div class="cs-lbl">{'All Clear' if crisis_count==0 and warning_count==0 else 'Nominal Items'}</div></div>
+</div>""", unsafe_allow_html=True)
+
     max_rain_day=max((p for p in daily["precipitation_sum"] if p),default=0)
     max_temp_v=max((t for t in daily["temperature_2m_max"] if t),default=0)
     st.markdown(f"""<div style="padding:0.7rem 1.1rem;background:rgba(0,220,180,0.03);border:1px solid rgba(0,220,180,0.1);
-border-radius:6px;margin-bottom:1rem;font-family:Share Tech Mono,monospace;font-size:0.61rem;color:rgba(0,140,170,0.6)">
+border-radius:6px;margin-bottom:1.2rem;font-family:Share Tech Mono,monospace;font-size:0.61rem;color:rgba(0,140,170,0.6)">
 ◈ 7D RAIN: {total_rain:.0f}MM · PEAK: {max_rain_day:.0f}MM/DAY · MAX TEMP: {max_temp_v:.1f}°C · RH: {cur['relative_humidity_2m']}% · AQI: {aq_cur.get('european_aqi','N/A')} · {now.strftime('%B').upper()}
 </div>""", unsafe_allow_html=True)
-    for level,title,msg in crisis_data:
+
+    for level,title,msg,sev in crisis_data:
         icon="🚨" if level=="crisis" else "⚠️" if level=="warning" else "✅"
-        st.markdown(f"""<div class="alert a-{level[0]}"><div class="a-icon">{icon}</div>
-<div><div class="a-title">{title}</div><div class="a-msg">{msg}</div></div></div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div class="alert a-{level[0]}">
+  <div class="alert-top"><div class="a-icon">{icon}</div>
+  <div style="flex:1"><div class="a-title">{title}</div><div class="a-msg">{msg}</div></div></div>
+  <div class="a-sev-track"><div class="a-sev-fill" style="width:{sev}%"></div></div>
+</div>""", unsafe_allow_html=True)
+
+    st.markdown("""<div class="sec-label" style="padding:0.6rem 0;margin-top:1.2rem">
+  <div class="sl-tag">AI DEEP ANALYSIS</div><div class="sl-line"></div></div>""", unsafe_allow_html=True)
+
     if st.button("▶ RUN AI CRISIS ANALYSIS", type="primary"):
-        s={"location":f"{city_name},{country}","lat":lat,"temp":cur["temperature_2m"],
-           "rh":cur["relative_humidity_2m"],"aqi":aq_cur.get("european_aqi"),
-           "7d_rain":total_rain,"peak_day":max_rain_day,"max_temp":max_temp_v,"month":now.month}
+        s={"location":f"{city_name},{region},{country}","lat":lat,"month":now.strftime('%B'),
+           "season":season_name,"season_description":season_desc,
+           "temp_c":cur["temperature_2m"],"humidity_pct":cur["relative_humidity_2m"],
+           "aqi_eu":aq_cur.get("european_aqi"),
+           "rain_7d_mm":total_rain,"peak_rain_day_mm":max_rain_day,"max_temp_7d_c":max_temp_v,
+           "detected_alerts":[{"level":a[0],"title":a[1]} for a in crisis_data]}
         with st.spinner("Analysing..."):
-            result=ask_groq(f"Agricultural crisis analysis for {city_name},{country} ({now.strftime('%B')},lat:{lat:.1f}):\n{json.dumps(s,indent=2)}\n1)Threats from actual data 2)Crop impact 3)48h actions 4)30d outlook",
-                system=f"Agricultural risk analyst for {country}. {now.strftime('%B')}: high rain→flood/disease focus, low rain→drought. Accurate to the numbers.")
+            result=ask_groq(
+                f"Agricultural situation analysis for {city_name}, {region}, {country}:\n{json.dumps(s,indent=2)}\n\n"
+                "Using ONLY the data above, provide:\n"
+                "1. SITUATION SUMMARY — 2-3 sentences grounded in the actual numbers and season given (do not invent risks not supported by this data; if conditions are normal for the season, say so plainly)\n"
+                "2. CROP-SPECIFIC IMPACT — what this means for crops realistically grown in this region during this season\n"
+                "3. 48-HOUR ACTIONS — concrete, locally-realistic steps a smallholder farmer can take\n"
+                "4. 30-DAY OUTLOOK — what to watch for, framed relative to what's NORMAL for this season here",
+                system=(f"You are a senior agricultural risk analyst for {country}, deeply familiar with {region or country}'s "
+                        f"regional crop calendar and seasonal weather patterns. It is currently {season_name} "
+                        f"({season_desc}). Judge severity RELATIVE TO WHAT IS NORMAL for this season and region — "
+                        f"do not treat normal seasonal dryness, heat, or humidity as a crisis. Be specific, "
+                        f"realistic, and avoid generic advice that could apply anywhere."))
         st.markdown(f'<div class="ai-box"><div class="ai-tag">AI CRISIS REPORT · {city_name.upper()}</div>{result.replace(chr(10),"<br>")}</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -1056,24 +1409,62 @@ border-radius:6px;margin-bottom:1rem;font-family:Share Tech Mono,monospace;font-
 # ══════════════════════════════════════════
 with tabs[3]:
     st.markdown('<div style="padding:1.5rem 2rem">', unsafe_allow_html=True)
-    crop_list=recommend_crops(weather)
-    for emoji,name,compat,reason,care in crop_list:
+
+    season_icons = {
+        "Monsoon / Wet Season":"🌧","Post-Monsoon Transition":"🌦",
+        "Cool Dry Season":"🌤","Hot Dry Season (Pre-Monsoon)":"☀️",
+        "Winter":"❄️","Spring":"🌱","Summer":"☀️","Autumn / Fall":"🍂"
+    }
+    st.markdown(f"""<div class="season-banner">
+  <div class="season-icon">{season_icons.get(season_name,'🌍')}</div>
+  <div>
+    <div class="season-name">{season_name.upper()} · {now.strftime('%B %Y')} · {city_name}, {country}</div>
+    <div class="season-desc">{season_desc}</div>
+  </div>
+</div>""", unsafe_allow_html=True)
+
+    src_label = "AI-MATCHED TO YOUR SEASON & LOCATION" if crops_are_ai else "SEASON-AWARE ESTIMATE (AI UNAVAILABLE)"
+    st.markdown(f"""<div style="font-family:'Share Tech Mono',monospace;font-size:0.56rem;letter-spacing:0.15em;
+color:rgba(0,160,190,0.5);margin-bottom:0.8rem">◈ {src_label} · {cur['temperature_2m']:.1f}°C · {cur['relative_humidity_2m']}% RH · {total_rain:.0f}mm/7d</div>""", unsafe_allow_html=True)
+
+    for crop in crop_list:
+        compat = crop["suitability"]
         cc,_=grade(compat)
-        st.markdown(f"""<div class="cc"><div class="cc-em">{emoji}</div>
-<div class="cc-bd"><div class="cc-nm">{name}</div><div class="cc-rs">▸ {reason}</div>
-<div class="cc-cr">◦ {care}</div></div>
+        req = crop.get("requirements","")
+        req_html = f'<div class="cc-tag req">⚠ {req}</div>' if req else ''
+        st.markdown(f"""<div class="cc"><div class="cc-em">{crop['emoji']}</div>
+<div class="cc-bd"><div class="cc-nm">{crop['name']}</div><div class="cc-rs">▸ {crop['reasoning']}</div>
+<div class="cc-cr">◦ {crop['care']}</div>
+<div class="cc-meta">{req_html}</div></div>
 <div>{mini_ring(compat,cc)}</div></div>""", unsafe_allow_html=True)
-    opts=[f"{e} {n}" for e,n,*_ in crop_list] if crop_list else ["N/A"]
+
+    opts=[f"{c['emoji']} {c['name']}" for c in crop_list] if crop_list else ["N/A"]
     sel=st.selectbox("Select crop for detailed plan",opts)
+    sel_crop = crop_list[opts.index(sel)] if crop_list and sel in opts else None
+
     if st.button("▶ GENERATE MANAGEMENT PLAN", type="primary") and crop_list:
+        sel_name = sel.split(" ",1)[1] if " " in sel else sel
+        req_note = sel_crop.get("requirements","") if sel_crop else ""
         with st.spinner("Building plan..."):
             result=ask_groq(
-                f"Precision plan for {sel} in {city_name},{country} ({now.strftime('%B')}). "
-                f"{cur['temperature_2m']:.1f}°C, {cur['relative_humidity_2m']}% RH, "
-                f"AQI {aq_cur.get('european_aqi','N/A')}, 7D rain {total_rain:.0f}mm. "
-                "Include: sowing timing, irrigation quantities, NPK plan, pest monitoring, harvest timeline.",
-                system=f"Precision agriculture specialist for {country} {now.strftime('%B')}.")
-        st.markdown(f'<div class="ai-box"><div class="ai-tag">MANAGEMENT PLAN · {sel.upper()}</div>{result.replace(chr(10),"<br>")}</div>', unsafe_allow_html=True)
+                f"Write a realistic, season-correct management plan for growing {sel_name} "
+                f"in {city_name}, {region}, {country} during {season_name} ({now.strftime('%B')}).\n"
+                f"Current conditions: {cur['temperature_2m']:.1f}°C, {cur['relative_humidity_2m']}% RH, "
+                f"AQI {aq_cur.get('european_aqi','N/A')}, {total_rain:.0f}mm rain over the past 7 days.\n"
+                f"Known constraint/requirement for this crop here: {req_note or 'none noted'}.\n\n"
+                "Cover, in order: 1) Whether NOW is actually the right time to start this crop given the season "
+                "(if not, say what the correct sowing window is and what to do meanwhile) "
+                "2) Sowing/transplanting steps appropriate to local practice "
+                "3) Irrigation schedule with realistic quantities for THIS climate "
+                "4) Fertiliser/NPK plan suited to smallholder access "
+                "5) Pest & disease watch-list specific to this crop, season and humidity level "
+                "6) Expected harvest window. "
+                "Be honest about water/infrastructure requirements rather than assuming ideal conditions.",
+                system=(f"You are a precision agriculture specialist for {country}, expert in {region or country}'s "
+                        f"local crop calendar. It is {season_name} ({season_desc}). Be realistic about whether this "
+                        f"crop is currently in-season here, and honest about resource requirements — "
+                        f"do not give generic advice that ignores season or local farming infrastructure."))
+        st.markdown(f'<div class="ai-box"><div class="ai-tag">MANAGEMENT PLAN · {sel_name.upper()}</div>{result.replace(chr(10),"<br>")}</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ══════════════════════════════════════════
